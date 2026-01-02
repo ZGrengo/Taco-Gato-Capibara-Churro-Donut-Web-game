@@ -1,4 +1,4 @@
-import type { Room, Player } from "@acme/shared";
+import type { Room, Player, Phase } from "@acme/shared";
 import { createPlayer } from "@acme/shared";
 
 /**
@@ -30,6 +30,8 @@ export class RoomManager {
 
     const room: Room = {
       code,
+      phase: "LOBBY",
+      hostId: playerId,
       players: [player],
       createdAt: Date.now(),
     };
@@ -48,6 +50,11 @@ export class RoomManager {
       return null;
     }
 
+    // Don't allow joining if game has started
+    if (room.phase !== "LOBBY") {
+      return null;
+    }
+
     // Check if player is already in this room
     if (room.players.some((p) => p.id === playerId)) {
       return room;
@@ -61,6 +68,7 @@ export class RoomManager {
 
   /**
    * Removes a player from their room
+   * Returns the updated room or null if room was deleted
    */
   leaveRoom(playerId: string): Room | null {
     const roomCode = this.playerToRoom.get(playerId);
@@ -74,6 +82,8 @@ export class RoomManager {
       return null;
     }
 
+    const wasHost = room.hostId === playerId;
+
     room.players = room.players.filter((p) => p.id !== playerId);
     this.playerToRoom.delete(playerId);
 
@@ -83,6 +93,74 @@ export class RoomManager {
       return null;
     }
 
+    // Transfer host if needed
+    if (wasHost && room.players.length > 0) {
+      // Sort by joinedAt and pick the first (oldest player)
+      const sortedPlayers = [...room.players].sort(
+        (a, b) => a.joinedAt - b.joinedAt
+      );
+      room.hostId = sortedPlayers[0].id;
+    }
+
+    // Reset all ready states when someone leaves in LOBBY phase
+    if (room.phase === "LOBBY") {
+      room.players.forEach((p) => {
+        p.ready = false;
+      });
+    }
+
+    return room;
+  }
+
+  /**
+   * Toggles ready state for a player
+   */
+  toggleReady(playerId: string): Room | null {
+    const room = this.getPlayerRoom(playerId);
+    if (!room || room.phase !== "LOBBY") {
+      return null;
+    }
+
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) {
+      return null;
+    }
+
+    player.ready = !player.ready;
+    return room;
+  }
+
+  /**
+   * Starts the game (changes phase to IN_GAME)
+   */
+  startGame(playerId: string): Room | null {
+    const room = this.getPlayerRoom(playerId);
+    if (!room) {
+      return null;
+    }
+
+    // Only host can start
+    if (room.hostId !== playerId) {
+      return null;
+    }
+
+    // Must be in LOBBY phase
+    if (room.phase !== "LOBBY") {
+      return null;
+    }
+
+    // Must have at least 2 players
+    if (room.players.length < 2) {
+      return null;
+    }
+
+    // All players must be ready (optional but recommended)
+    const allReady = room.players.every((p) => p.ready);
+    if (!allReady) {
+      return null;
+    }
+
+    room.phase = "IN_GAME";
     return room;
   }
 

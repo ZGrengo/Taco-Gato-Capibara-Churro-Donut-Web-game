@@ -6,6 +6,8 @@ import {
   EVENTS,
   RoomCreateSchema,
   RoomJoinSchema,
+  ReadyToggleSchema,
+  StartGameSchema,
 } from "@acme/shared";
 import { RoomManager } from "./room-manager";
 
@@ -35,6 +37,20 @@ app.get("/health", (_req, res) => {
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
+  // Helper function to emit room state
+  const emitRoomState = (roomCode: string) => {
+    const room = roomManager.getRoom(roomCode);
+    if (!room) return;
+
+    io.to(roomCode).emit(EVENTS.ROOM_STATE, {
+      code: room.code,
+      phase: room.phase,
+      hostId: room.hostId,
+      players: room.players,
+      createdAt: room.createdAt,
+    });
+  };
+
   // Handle room creation
   socket.on(EVENTS.ROOM_CREATE, (payload) => {
     const result = RoomCreateSchema.safeParse(payload);
@@ -49,11 +65,7 @@ io.on("connection", (socket) => {
     const room = roomManager.createRoom(name, socket.id);
     socket.join(room.code);
 
-    socket.emit(EVENTS.ROOM_STATE, {
-      code: room.code,
-      players: room.players,
-      createdAt: room.createdAt,
-    });
+    emitRoomState(room.code);
 
     console.log(`Room created: ${room.code} by ${socket.id}`);
   });
@@ -73,20 +85,80 @@ io.on("connection", (socket) => {
 
     if (!room) {
       socket.emit(EVENTS.ERROR, {
-        message: `Room ${code} not found`,
+        message: `Room ${code} not found or game has already started`,
       } satisfies { message: string });
       return;
     }
 
     socket.join(room.code);
-    // Notify all players in the room
-    io.to(room.code).emit(EVENTS.ROOM_STATE, {
-      code: room.code,
-      players: room.players,
-      createdAt: room.createdAt,
-    });
+    emitRoomState(room.code);
 
     console.log(`Player ${socket.id} joined room ${code}`);
+  });
+
+  // Handle ready toggle
+  socket.on(EVENTS.READY_TOGGLE, (payload) => {
+    // Validate payload (empty object)
+    const result = ReadyToggleSchema.safeParse(payload);
+    if (!result.success) {
+      socket.emit(EVENTS.ERROR, {
+        message: "Invalid payload: " + result.error.message,
+      } satisfies { message: string });
+      return;
+    }
+
+    const room = roomManager.toggleReady(socket.id);
+    if (!room) {
+      socket.emit(EVENTS.ERROR, {
+        message: "You are not in a room or the game has already started",
+      } satisfies { message: string });
+      return;
+    }
+
+    emitRoomState(room.code);
+    console.log(`Player ${socket.id} toggled ready in room ${room.code}`);
+  });
+
+  // Handle start game
+  socket.on(EVENTS.START_GAME, (payload) => {
+    // Validate payload (empty object)
+    const result = StartGameSchema.safeParse(payload);
+    if (!result.success) {
+      socket.emit(EVENTS.ERROR, {
+        message: "Invalid payload: " + result.error.message,
+      } satisfies { message: string });
+      return;
+    }
+
+    const room = roomManager.startGame(socket.id);
+    if (!room) {
+      const playerRoom = roomManager.getPlayerRoom(socket.id);
+      if (!playerRoom) {
+        socket.emit(EVENTS.ERROR, {
+          message: "You are not in a room",
+        } satisfies { message: string });
+      } else if (playerRoom.hostId !== socket.id) {
+        socket.emit(EVENTS.ERROR, {
+          message: "Only the host can start the game",
+        } satisfies { message: string });
+      } else if (playerRoom.phase !== "LOBBY") {
+        socket.emit(EVENTS.ERROR, {
+          message: "Game has already started",
+        } satisfies { message: string });
+      } else if (playerRoom.players.length < 2) {
+        socket.emit(EVENTS.ERROR, {
+          message: "Need at least 2 players to start",
+        } satisfies { message: string });
+      } else {
+        socket.emit(EVENTS.ERROR, {
+          message: "All players must be ready to start",
+        } satisfies { message: string });
+      }
+      return;
+    }
+
+    emitRoomState(room.code);
+    console.log(`Game started in room ${room.code} by ${socket.id}`);
   });
 
   // Handle room leave
@@ -94,12 +166,7 @@ io.on("connection", (socket) => {
     const room = roomManager.leaveRoom(socket.id);
     if (room) {
       socket.leave(room.code);
-      // Notify remaining players
-      io.to(room.code).emit(EVENTS.ROOM_STATE, {
-        code: room.code,
-        players: room.players,
-        createdAt: room.createdAt,
-      });
+      emitRoomState(room.code);
     }
   });
 
@@ -109,12 +176,7 @@ io.on("connection", (socket) => {
     const room = roomManager.leaveRoom(socket.id);
     if (room) {
       socket.leave(room.code);
-      // Notify remaining players
-      io.to(room.code).emit(EVENTS.ROOM_STATE, {
-        code: room.code,
-        players: room.players,
-        createdAt: room.createdAt,
-      });
+      emitRoomState(room.code);
     }
   });
 });

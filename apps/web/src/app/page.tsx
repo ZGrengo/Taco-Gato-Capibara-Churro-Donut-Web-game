@@ -15,6 +15,7 @@ export default function Home() {
   const [joinCode, setJoinCode] = useState("");
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [socketId, setSocketId] = useState<string | null>(null);
 
   useEffect(() => {
     const newSocket = io(SOCKET_URL, {
@@ -24,12 +25,14 @@ export default function Home() {
     newSocket.on("connect", () => {
       console.log("Connected to server");
       setConnected(true);
+      setSocketId(newSocket.id);
       setError(null);
     });
 
     newSocket.on("disconnect", () => {
       console.log("Disconnected from server");
       setConnected(false);
+      setSocketId(null);
     });
 
     newSocket.on(EVENTS.ROOM_STATE, (data: RoomState) => {
@@ -74,6 +77,45 @@ export default function Home() {
     socket.emit(EVENTS.ROOM_LEAVE);
     setRoomState(null);
     setRoomCode("");
+  };
+
+  const handleReadyToggle = () => {
+    if (!socket || !roomState) return;
+    socket.emit(EVENTS.READY_TOGGLE, {});
+  };
+
+  const handleStartGame = () => {
+    if (!socket || !roomState) return;
+    socket.emit(EVENTS.START_GAME, {});
+  };
+
+  // Check if current player is host
+  const isHost = roomState && socketId && roomState.hostId === socketId;
+
+  // Get current player
+  const currentPlayer =
+    roomState && socketId
+      ? roomState.players.find((p) => p.id === socketId)
+      : null;
+
+  // Check if can start game
+  const canStartGame =
+    isHost &&
+    roomState &&
+    roomState.phase === "LOBBY" &&
+    roomState.players.length >= 2 &&
+    roomState.players.every((p) => p.ready);
+
+  // Get validation message for start game
+  const getStartGameMessage = () => {
+    if (!roomState || !isHost) return null;
+    if (roomState.phase !== "LOBBY") return "Game has already started";
+    if (roomState.players.length < 2)
+      return "Need at least 2 players to start";
+    const notReady = roomState.players.filter((p) => !p.ready);
+    if (notReady.length > 0)
+      return `${notReady.length} player(s) not ready`;
+    return null;
   };
 
   return (
@@ -147,19 +189,26 @@ export default function Home() {
               className="mb-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Room Code:
-                </span>
-                <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
-                  {roomState.code}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Room Code:
+                  </span>
+                  <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                    {roomState.code}
+                  </span>
+                  <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-medium">
+                    {roomState.phase}
+                  </span>
+                </div>
               </div>
-              <button
-                onClick={handleLeaveRoom}
-                className="mt-2 text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-              >
-                Leave Room
-              </button>
+              <div className="flex items-center justify-between mt-3">
+                <button
+                  onClick={handleLeaveRoom}
+                  className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                >
+                  Leave Room
+                </button>
+              </div>
             </motion.div>
           )}
 
@@ -208,8 +257,104 @@ export default function Home() {
             </div>
           )}
 
-          {/* Players List */}
-          {roomState && (
+          {/* Lobby UI */}
+          {roomState && roomState.phase === "LOBBY" && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-6"
+            >
+              <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">
+                Players ({roomState.players.length})
+              </h2>
+              <div className="space-y-2 mb-6">
+                {roomState.players.map((player) => {
+                  const isPlayerHost = player.id === roomState.hostId;
+                  const isCurrentPlayer = player.id === socketId;
+                  return (
+                    <motion.div
+                      key={player.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className={`flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg ${
+                        isCurrentPlayer ? "ring-2 ring-indigo-500" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-900 dark:text-white font-medium">
+                          {player.name}
+                        </span>
+                        {isPlayerHost && (
+                          <span
+                            className="text-xs px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-full font-medium"
+                            title="Host"
+                          >
+                            👑 Host
+                          </span>
+                        )}
+                        {player.ready && (
+                          <span
+                            className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full font-medium"
+                            title="Ready"
+                          >
+                            ✓ Ready
+                          </span>
+                        )}
+                        {!player.ready && (
+                          <span
+                            className="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-full font-medium"
+                            title="Not Ready"
+                          >
+                            ○ Not Ready
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(player.joinedAt).toLocaleTimeString()}
+                      </span>
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {/* Ready Toggle Button */}
+              {currentPlayer && (
+                <div className="mb-4">
+                  <button
+                    onClick={handleReadyToggle}
+                    className={`w-full px-4 py-3 rounded-lg font-medium transition-colors ${
+                      currentPlayer.ready
+                        ? "bg-green-600 hover:bg-green-700 text-white"
+                        : "bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white"
+                    }`}
+                  >
+                    {currentPlayer.ready ? "✓ Ready" : "○ Not Ready"}
+                  </button>
+                </div>
+              )}
+
+              {/* Start Game Button (Host only) */}
+              {isHost && (
+                <div className="mb-4">
+                  <button
+                    onClick={handleStartGame}
+                    disabled={!canStartGame}
+                    className="w-full px-4 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Start Game
+                  </button>
+                  {!canStartGame && getStartGameMessage() && (
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 text-center">
+                      {getStartGameMessage()}
+                    </p>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* In Game / Ended Phase */}
+          {roomState && roomState.phase !== "LOBBY" && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -219,21 +364,36 @@ export default function Home() {
                 Players ({roomState.players.length})
               </h2>
               <div className="space-y-2">
-                {roomState.players.map((player) => (
-                  <motion.div
-                    key={player.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
-                  >
-                    <span className="text-gray-900 dark:text-white">
-                      {player.name}
-                    </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {new Date(player.joinedAt).toLocaleTimeString()}
-                    </span>
-                  </motion.div>
-                ))}
+                {roomState.players.map((player) => {
+                  const isPlayerHost = player.id === roomState.hostId;
+                  return (
+                    <motion.div
+                      key={player.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-900 dark:text-white">
+                          {player.name}
+                        </span>
+                        {isPlayerHost && (
+                          <span
+                            className="text-xs px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-full font-medium"
+                            title="Host"
+                          >
+                            👑 Host
+                          </span>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <p className="text-center text-gray-700 dark:text-gray-300">
+                  Game is {roomState.phase === "IN_GAME" ? "in progress" : "ended"}
+                </p>
               </div>
             </motion.div>
           )}

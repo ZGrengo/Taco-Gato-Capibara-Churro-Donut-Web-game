@@ -1,17 +1,19 @@
-import type { Player, RoomState } from "./schemas";
+import type { Player, RoomState, Phase } from "./schemas";
 
 /**
  * Base types for the game (can be extended)
  */
 
 // Re-export types from schemas for convenience
-export type { Player, RoomState } from "./schemas";
+export type { Player, RoomState, Phase } from "./schemas";
 
 /**
  * In-memory room data structure (used in server)
  */
 export interface Room {
   code: string;
+  phase: Phase;
+  hostId: string;
   players: Player[];
   createdAt: number;
 }
@@ -24,6 +26,7 @@ export function createPlayer(id: string, name: string): Player {
     id,
     name,
     joinedAt: Date.now(),
+    ready: false,
   };
 }
 
