@@ -7,6 +7,7 @@ import {
   type RoomState,
   type ErrorPayload,
   type GameState,
+  type Card,
 } from "@acme/shared";
 import { motion } from "framer-motion";
 
@@ -126,6 +127,71 @@ export default function Home() {
     if (notReady.length > 0)
       return `${notReady.length} player(s) not ready`;
     return null;
+  };
+
+  // Card Display Component
+  const CardDisplay = ({ card }: { card: Card }) => {
+    const bgColorClasses = {
+      yellow: "bg-yellow-400",
+      orange: "bg-orange-400",
+      green: "bg-green-400",
+      blue: "bg-blue-400",
+      red: "bg-red-400",
+    };
+
+    const bgColor = bgColorClasses[card.visual.bgColor] || "bg-gray-400";
+    const [imageError, setImageError] = useState(false);
+
+    if (card.type === "SPECIAL") {
+      return (
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4`}
+        >
+          <div className="text-center">
+            <p className="text-2xl font-bold text-white mb-2">SPECIAL</p>
+            <p className="text-lg text-white/90">{card.visual.specialType}</p>
+          </div>
+        </motion.div>
+      );
+    }
+
+    // NORMAL card
+    const imagePath = `/assets/cards/${card.visual.kind}/variants/${card.visual.style}.png`;
+
+    return (
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
+      >
+        {!imageError && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <img
+              src={imagePath}
+              alt={`${card.visual.kind} ${card.visual.style}`}
+              className="object-contain w-full h-full"
+              onError={() => setImageError(true)}
+            />
+          </div>
+        )}
+        {/* Fallback text if image fails to load */}
+        {imageError && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-3xl font-bold text-white uppercase drop-shadow-lg">
+              {card.visual.kind}
+            </p>
+          </div>
+        )}
+        {/* Card label */}
+        <div className="absolute bottom-2 left-0 right-0 text-center">
+          <p className="text-sm font-semibold text-white/90 uppercase drop-shadow">
+            {card.visual.kind}
+          </p>
+        </div>
+      </motion.div>
+    );
   };
 
   return (
@@ -396,24 +462,16 @@ export default function Home() {
                 {/* Card Display */}
                 <div className="mb-6 flex flex-col items-center">
                   <div className="w-full max-w-sm">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-8 border-4 border-gray-300 dark:border-gray-600 min-h-[200px] flex items-center justify-center">
-                      {roomState.game.currentCard ? (
-                        <motion.div
-                          initial={{ scale: 0.8, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          className="text-center"
-                        >
-                          <p className="text-4xl font-bold text-gray-900 dark:text-white uppercase">
-                            {roomState.game.currentCard}
-                          </p>
-                        </motion.div>
-                      ) : (
+                    {roomState.game.currentCard ? (
+                      <CardDisplay card={roomState.game.currentCard} />
+                    ) : (
+                      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-8 border-4 border-gray-300 dark:border-gray-600 min-h-[280px] flex items-center justify-center">
                         <div className="text-center text-gray-400 dark:text-gray-600">
                           <p className="text-xl">Pila de cartas</p>
                           <p className="text-sm mt-2">Haz flip para revelar</p>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
                       <p>Deck: {roomState.game.deckCount} cartas</p>
                       <p>Descartes: {roomState.game.discardCount}</p>

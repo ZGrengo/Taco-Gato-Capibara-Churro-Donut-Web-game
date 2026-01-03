@@ -1,5 +1,6 @@
-import type { Room, Player, Phase, Word, CardType, GameState } from "@acme/shared";
-import { createPlayer, WORDS } from "@acme/shared";
+import type { Room, Player, Phase, Card, GameState } from "@acme/shared";
+import { createPlayer, KINDS, BG_COLORS, STYLES } from "@acme/shared";
+import { randomUUID } from "crypto";
 
 /**
  * Generates a random 5-character room code
@@ -27,12 +28,90 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 /**
+ * Generates a complete deck of 64 cards (55 normal + 9 special)
+ */
+function generateDeck(): Card[] {
+  const deck: Card[] = [];
+
+  // Generate 55 normal cards (11 per kind)
+  for (const kind of KINDS) {
+    // 1 card with style3 (rare)
+    const bgColorStyle3 = BG_COLORS[Math.floor(Math.random() * BG_COLORS.length)];
+    deck.push({
+      id: randomUUID(),
+      type: "NORMAL",
+      word: kind,
+      visual: {
+        kind,
+        style: "style3",
+        bgColor: bgColorStyle3,
+      },
+    });
+
+    // 5 cards with style1
+    for (let i = 0; i < 5; i++) {
+      const bgColor = BG_COLORS[i % BG_COLORS.length]; // Cycle through colors
+      deck.push({
+        id: randomUUID(),
+        type: "NORMAL",
+        word: kind,
+        visual: {
+          kind,
+          style: "style1",
+          bgColor,
+        },
+      });
+    }
+
+    // 5 cards with style2
+    for (let i = 0; i < 5; i++) {
+      const bgColor = BG_COLORS[(i + 2) % BG_COLORS.length]; // Offset cycle
+      deck.push({
+        id: randomUUID(),
+        type: "NORMAL",
+        word: kind,
+        visual: {
+          kind,
+          style: "style2",
+          bgColor,
+        },
+      });
+    }
+  }
+
+  // Generate 9 special cards (3 of each type)
+  const specialTypes: Array<"SPECIAL_1" | "SPECIAL_2" | "SPECIAL_3"> = [
+    "SPECIAL_1",
+    "SPECIAL_2",
+    "SPECIAL_3",
+  ];
+  for (const specialType of specialTypes) {
+    for (let i = 0; i < 3; i++) {
+      const bgColor = BG_COLORS[i % BG_COLORS.length];
+      deck.push({
+        id: randomUUID(),
+        type: "SPECIAL",
+        word: "special",
+        visual: {
+          kind: "special",
+          bgColor,
+          specialType,
+        },
+      });
+    }
+  }
+
+  // Shuffle the deck
+  return shuffleArray(deck);
+}
+
+/**
  * Internal game state (server-side only)
  */
 interface InternalGameState {
-  deck: CardType[];
-  discard: CardType[];
-  currentCard?: CardType;
+  deck: Card[];
+  discard: Card[];
+  currentCard?: Card;
   turnIndex: number;
   wordIndex: number;
   lastFlipAt?: number;
@@ -182,15 +261,11 @@ export class RoomManager {
    * Initializes the game state for a room
    */
   private initGame(room: RoomWithGame): void {
-    // Create deck: 4 copies of each word = 20 cards total (simple)
-    const deck: CardType[] = [];
-    for (let i = 0; i < 4; i++) {
-      deck.push(...WORDS);
-    }
-    const shuffledDeck = shuffleArray(deck);
+    // Generate complete deck of 64 cards (55 normal + 9 special)
+    const deck = generateDeck();
 
     room.internalGame = {
-      deck: shuffledDeck,
+      deck,
       discard: [],
       currentCard: undefined,
       turnIndex: 0,
@@ -216,7 +291,7 @@ export class RoomManager {
       turnPlayerId: turnPlayer.id,
       turnIndex: internalGame.turnIndex,
       wordIndex: internalGame.wordIndex,
-      currentWord: WORDS[internalGame.wordIndex],
+      currentWord: KINDS[internalGame.wordIndex],
       currentCard: internalGame.currentCard,
       deckCount: internalGame.deck.length,
       discardCount: internalGame.discard.length,
@@ -301,7 +376,7 @@ export class RoomManager {
     internalGame.currentCard = newCard;
 
     // Advance word index (circular)
-    internalGame.wordIndex = (internalGame.wordIndex + 1) % WORDS.length;
+    internalGame.wordIndex = (internalGame.wordIndex + 1) % KINDS.length;
 
     // Advance turn index (circular)
     internalGame.turnIndex = (internalGame.turnIndex + 1) % room.players.length;

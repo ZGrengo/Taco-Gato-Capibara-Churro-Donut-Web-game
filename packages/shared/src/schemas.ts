@@ -36,19 +36,48 @@ export const PlayerSchema = z.object({
   ready: z.boolean(),
 });
 
-// Word type schema (for validation)
-export const WordSchema = z.enum(["taco", "gato", "capibara", "churro", "donut"]);
+// Word type schema (for validation) - using KINDS
+export const KindSchema = z.enum(["taco", "gato", "capibara", "churro", "donut"]);
+// Legacy alias
+export const WordSchema = KindSchema;
 
-// Card type schema
-export const CardTypeSchema = z.union([WordSchema, z.literal("SPECIAL")]);
+export const CardBgColorSchema = z.enum(["yellow", "orange", "green", "blue", "red"]);
+export const CardStyleSchema = z.enum(["style1", "style2", "style3"]);
+export const SpecialTypeSchema = z.enum(["SPECIAL_1", "SPECIAL_2", "SPECIAL_3"]);
+
+// Card visual schemas
+export const CardVisualNormalSchema = z.object({
+  kind: KindSchema,
+  style: CardStyleSchema,
+  bgColor: CardBgColorSchema,
+});
+
+export const CardVisualSpecialSchema = z.object({
+  kind: z.literal("special"),
+  bgColor: CardBgColorSchema,
+  specialType: SpecialTypeSchema,
+});
+
+export const CardVisualSchema = z.discriminatedUnion("kind", [
+  CardVisualNormalSchema,
+  CardVisualSpecialSchema,
+]);
+
+// Card schema
+export const CardSchema = z.object({
+  id: z.string(),
+  type: z.enum(["NORMAL", "SPECIAL"]),
+  word: z.union([KindSchema, z.literal("special")]),
+  visual: CardVisualSchema,
+});
 
 // Game state schema
 export const GameStateSchema = z.object({
   turnPlayerId: z.string(),
   turnIndex: z.number(),
   wordIndex: z.number(),
-  currentWord: WordSchema,
-  currentCard: CardTypeSchema.optional(),
+  currentWord: KindSchema,
+  currentCard: CardSchema.optional(),
   deckCount: z.number(),
   discardCount: z.number(),
   lastFlipAt: z.number().optional(),
@@ -76,8 +105,15 @@ export type ReadyTogglePayload = z.infer<typeof ReadyToggleSchema>;
 export type StartGamePayload = z.infer<typeof StartGameSchema>;
 export type FlipRequestPayload = z.infer<typeof FlipRequestSchema>;
 export type Player = z.infer<typeof PlayerSchema>;
-export type Word = z.infer<typeof WordSchema>;
-export type CardType = z.infer<typeof CardTypeSchema>;
+export type Kind = z.infer<typeof KindSchema>;
+export type Word = Kind; // Legacy alias
+export type CardBgColor = z.infer<typeof CardBgColorSchema>;
+export type CardStyle = z.infer<typeof CardStyleSchema>;
+export type SpecialType = z.infer<typeof SpecialTypeSchema>;
+export type CardVisualNormal = z.infer<typeof CardVisualNormalSchema>;
+export type CardVisualSpecial = z.infer<typeof CardVisualSpecialSchema>;
+export type CardVisual = z.infer<typeof CardVisualSchema>;
+export type Card = z.infer<typeof CardSchema>;
 export type GameState = z.infer<typeof GameStateSchema>;
 export type RoomState = z.infer<typeof RoomStateSchema>;
 export type ErrorPayload = z.infer<typeof ErrorSchema>;
