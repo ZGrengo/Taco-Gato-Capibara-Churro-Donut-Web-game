@@ -1,11 +1,11 @@
-import type { Player, RoomState, Phase } from "./schemas";
+import type { Player, RoomState, Phase, Word, CardType, GameState } from "./schemas";
 
 /**
  * Base types for the game (can be extended)
  */
 
 // Re-export types from schemas for convenience
-export type { Player, RoomState, Phase } from "./schemas";
+export type { Player, RoomState, Phase, Word, CardType, GameState } from "./schemas";
 
 /**
  * In-memory room data structure (used in server)

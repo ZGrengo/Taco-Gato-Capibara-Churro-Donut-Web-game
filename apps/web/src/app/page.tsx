@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { EVENTS, type RoomState, type ErrorPayload } from "@acme/shared";
+import {
+  EVENTS,
+  type RoomState,
+  type ErrorPayload,
+  type GameState,
+} from "@acme/shared";
 import { motion } from "framer-motion";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
@@ -87,6 +92,11 @@ export default function Home() {
   const handleStartGame = () => {
     if (!socket || !roomState) return;
     socket.emit(EVENTS.START_GAME, {});
+  };
+
+  const handleFlipCard = () => {
+    if (!socket || !roomState) return;
+    socket.emit(EVENTS.FLIP_REQUEST, {});
   };
 
   // Check if current player is host
@@ -353,46 +363,149 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* In Game / Ended Phase */}
-          {roomState && roomState.phase !== "LOBBY" && (
+          {/* In Game Phase */}
+          {roomState && roomState.phase === "IN_GAME" && roomState.game && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="mt-6"
             >
-              <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">
-                Players ({roomState.players.length})
-              </h2>
-              <div className="space-y-2">
-                {roomState.players.map((player) => {
-                  const isPlayerHost = player.id === roomState.hostId;
-                  return (
-                    <motion.div
-                      key={player.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-900 dark:text-white">
-                          {player.name}
-                        </span>
-                        {isPlayerHost && (
-                          <span
-                            className="text-xs px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-full font-medium"
-                            title="Host"
-                          >
-                            👑 Host
-                          </span>
-                        )}
-                      </div>
-                    </motion.div>
-                  );
-                })}
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+                  🎮 Game In Progress
+                </h2>
+
+                {/* Current Turn */}
+                <div className="mb-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                  <p className="text-lg font-semibold text-indigo-900 dark:text-indigo-100 mb-1">
+                    Turno de:{" "}
+                    {
+                      roomState.players.find(
+                        (p) => p.id === roomState.game?.turnPlayerId
+                      )?.name
+                    }
+                  </p>
+                  <p className="text-md text-indigo-700 dark:text-indigo-300">
+                    Palabra actual:{" "}
+                    <span className="font-bold uppercase">
+                      {roomState.game.currentWord}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Card Display */}
+                <div className="mb-6 flex flex-col items-center">
+                  <div className="w-full max-w-sm">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-8 border-4 border-gray-300 dark:border-gray-600 min-h-[200px] flex items-center justify-center">
+                      {roomState.game.currentCard ? (
+                        <motion.div
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          className="text-center"
+                        >
+                          <p className="text-4xl font-bold text-gray-900 dark:text-white uppercase">
+                            {roomState.game.currentCard}
+                          </p>
+                        </motion.div>
+                      ) : (
+                        <div className="text-center text-gray-400 dark:text-gray-600">
+                          <p className="text-xl">Pila de cartas</p>
+                          <p className="text-sm mt-2">Haz flip para revelar</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
+                      <p>Deck: {roomState.game.deckCount} cartas</p>
+                      <p>Descartes: {roomState.game.discardCount}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Flip Button */}
+                <div className="mb-6">
+                  <button
+                    onClick={handleFlipCard}
+                    disabled={
+                      !socketId ||
+                      roomState.game.turnPlayerId !== socketId ||
+                      !socket
+                    }
+                    className={`w-full px-6 py-4 rounded-lg font-bold text-lg transition-all ${
+                      socketId && roomState.game.turnPlayerId === socketId
+                        ? "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
+                        : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                    }`}
+                  >
+                    {socketId && roomState.game.turnPlayerId === socketId
+                      ? "🃏 Flip Card"
+                      : "Esperando tu turno..."}
+                  </button>
+                </div>
+
+                {/* Players List */}
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">
+                    Players ({roomState.players.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {roomState.players.map((player, index) => {
+                      const isPlayerHost = player.id === roomState.hostId;
+                      const isCurrentTurn =
+                        player.id === roomState.game?.turnPlayerId;
+                      return (
+                        <motion.div
+                          key={player.id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className={`flex items-center justify-between p-3 rounded-lg ${
+                            isCurrentTurn
+                              ? "bg-green-100 dark:bg-green-900/30 border-2 border-green-500"
+                              : "bg-gray-50 dark:bg-gray-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              {player.name}
+                            </span>
+                            {isPlayerHost && (
+                              <span
+                                className="text-xs px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-full font-medium"
+                                title="Host"
+                              >
+                                👑 Host
+                              </span>
+                            )}
+                            {isCurrentTurn && (
+                              <span
+                                className="text-xs px-2 py-0.5 bg-green-500 text-white rounded-full font-medium"
+                                title="Current Turn"
+                              >
+                                ⏱️ Turno
+                              </span>
+                            )}
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <p className="text-center text-gray-700 dark:text-gray-300">
-                  Game is {roomState.phase === "IN_GAME" ? "in progress" : "ended"}
+            </motion.div>
+          )}
+
+          {/* Ended Phase */}
+          {roomState && roomState.phase === "ENDED" && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-6"
+            >
+              <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
+                <p className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                  Game Ended
+                </p>
+                <p className="text-gray-600 dark:text-gray-400">
+                  The game has ended.
                 </p>
               </div>
             </motion.div>

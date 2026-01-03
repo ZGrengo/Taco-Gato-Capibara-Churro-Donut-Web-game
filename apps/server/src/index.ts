@@ -8,6 +8,7 @@ import {
   RoomJoinSchema,
   ReadyToggleSchema,
   StartGameSchema,
+  FlipRequestSchema,
 } from "@acme/shared";
 import { RoomManager } from "./room-manager";
 
@@ -42,12 +43,15 @@ io.on("connection", (socket) => {
     const room = roomManager.getRoom(roomCode);
     if (!room) return;
 
+    const gameState = roomManager.getGameState(room);
+
     io.to(roomCode).emit(EVENTS.ROOM_STATE, {
       code: room.code,
       phase: room.phase,
       hostId: room.hostId,
       players: room.players,
       createdAt: room.createdAt,
+      game: gameState,
     });
   };
 
@@ -159,6 +163,39 @@ io.on("connection", (socket) => {
 
     emitRoomState(room.code);
     console.log(`Game started in room ${room.code} by ${socket.id}`);
+  });
+
+  // Handle flip request
+  socket.on(EVENTS.FLIP_REQUEST, (payload) => {
+    const result = FlipRequestSchema.safeParse(payload);
+    if (!result.success) {
+      socket.emit(EVENTS.ERROR, {
+        message: "Invalid payload: " + result.error.message,
+      } satisfies { message: string });
+      return;
+    }
+
+    const room = roomManager.flipCard(socket.id);
+    if (!room) {
+      const playerRoom = roomManager.getPlayerRoom(socket.id);
+      if (!playerRoom) {
+        socket.emit(EVENTS.ERROR, {
+          message: "You are not in a room",
+        } satisfies { message: string });
+      } else if (playerRoom.phase !== "IN_GAME") {
+        socket.emit(EVENTS.ERROR, {
+          message: "Game is not in progress",
+        } satisfies { message: string });
+      } else {
+        socket.emit(EVENTS.ERROR, {
+          message: "It's not your turn",
+        } satisfies { message: string });
+      }
+      return;
+    }
+
+    emitRoomState(room.code);
+    console.log(`Player ${socket.id} flipped a card in room ${room.code}`);
   });
 
   // Handle room leave
