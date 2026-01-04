@@ -9,6 +9,7 @@ import {
   ReadyToggleSchema,
   StartGameSchema,
   FlipRequestSchema,
+  ClaimAttemptSchema,
 } from "@acme/shared";
 import { RoomManager } from "./room-manager";
 
@@ -29,6 +30,9 @@ app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 
 const roomManager = new RoomManager();
+
+// Set IO instance for room manager
+roomManager.setIO(io);
 
 // Health check endpoint
 app.get("/health", (_req, res) => {
@@ -196,6 +200,29 @@ io.on("connection", (socket) => {
 
     emitRoomState(room.code);
     console.log(`Player ${socket.id} flipped a card in room ${room.code}`);
+  });
+
+  // Handle claim attempt
+  socket.on(EVENTS.CLAIM_ATTEMPT, (payload) => {
+    const result = ClaimAttemptSchema.safeParse(payload);
+    if (!result.success) {
+      socket.emit(EVENTS.ERROR, {
+        message: "Invalid payload: " + result.error.message,
+      } satisfies { message: string });
+      return;
+    }
+
+    const { claimId } = result.data;
+    const room = roomManager.claimAttempt(socket.id, claimId);
+    if (!room) {
+      socket.emit(EVENTS.ERROR, {
+        message: "You are not in a room or game is not in progress",
+      } satisfies { message: string });
+      return;
+    }
+
+    emitRoomState(room.code);
+    console.log(`Player ${socket.id} attempted claim in room ${room.code}`);
   });
 
   // Handle room leave

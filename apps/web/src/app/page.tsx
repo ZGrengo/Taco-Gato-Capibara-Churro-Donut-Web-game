@@ -8,10 +8,80 @@ import {
   type ErrorPayload,
   type GameState,
   type Card,
+  CLAIM_WINDOW_MS,
 } from "@acme/shared";
 import { motion } from "framer-motion";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
+
+// Card Display Component - moved outside to prevent recreation on each render
+function CardDisplay({ card }: { card: Card }) {
+  const bgColorClasses = {
+    yellow: "bg-yellow-400",
+    orange: "bg-orange-400",
+    green: "bg-green-400",
+    blue: "bg-blue-400",
+    red: "bg-red-400",
+  };
+
+  const bgColor = bgColorClasses[card.visual.bgColor] || "bg-gray-400";
+  const [imageError, setImageError] = useState(false);
+
+  if (card.type === "SPECIAL") {
+    return (
+      <motion.div
+        key={card.id}
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.3 }}
+        className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4`}
+      >
+        <div className="text-center">
+          <p className="text-2xl font-bold text-white mb-2">SPECIAL</p>
+          <p className="text-lg text-white/90">{card.visual.specialType}</p>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // NORMAL card
+  const imagePath = `/assets/cards/${card.visual.kind}/variants/${card.visual.style}.png`;
+
+  return (
+    <motion.div
+      key={card.id}
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
+    >
+      {!imageError && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <img
+            src={imagePath}
+            alt={`${card.visual.kind} ${card.visual.style}`}
+            className="object-contain w-full h-full"
+            onError={() => setImageError(true)}
+          />
+        </div>
+      )}
+      {/* Fallback text if image fails to load */}
+      {imageError && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <p className="text-3xl font-bold text-white uppercase drop-shadow-lg">
+            {card.visual.kind}
+          </p>
+        </div>
+      )}
+      {/* Card label */}
+      <div className="absolute bottom-2 left-0 right-0 text-center">
+        <p className="text-sm font-semibold text-white/90 uppercase drop-shadow">
+          {card.visual.kind}
+        </p>
+      </div>
+    </motion.div>
+  );
+}
 
 export default function Home() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -22,6 +92,7 @@ export default function Home() {
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [socketId, setSocketId] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(Date.now());
 
   useEffect(() => {
     const newSocket = io(SOCKET_URL, {
@@ -31,7 +102,7 @@ export default function Home() {
     newSocket.on("connect", () => {
       console.log("Connected to server");
       setConnected(true);
-      setSocketId(newSocket.id);
+      setSocketId(newSocket.id || null);
       setError(null);
     });
 
@@ -57,6 +128,14 @@ export default function Home() {
     return () => {
       newSocket.close();
     };
+  }, []);
+
+  // Update current time every 100ms for countdown display
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 100);
+    return () => clearInterval(interval);
   }, []);
 
   const handleCreateRoom = () => {
@@ -100,6 +179,11 @@ export default function Home() {
     socket.emit(EVENTS.FLIP_REQUEST, {});
   };
 
+  const handleClaim = () => {
+    if (!socket || !roomState || !roomState.game?.claim) return;
+    socket.emit(EVENTS.CLAIM_ATTEMPT, { claimId: roomState.game.claim.claimId });
+  };
+
   // Check if current player is host
   const isHost = roomState && socketId && roomState.hostId === socketId;
 
@@ -127,71 +211,6 @@ export default function Home() {
     if (notReady.length > 0)
       return `${notReady.length} player(s) not ready`;
     return null;
-  };
-
-  // Card Display Component
-  const CardDisplay = ({ card }: { card: Card }) => {
-    const bgColorClasses = {
-      yellow: "bg-yellow-400",
-      orange: "bg-orange-400",
-      green: "bg-green-400",
-      blue: "bg-blue-400",
-      red: "bg-red-400",
-    };
-
-    const bgColor = bgColorClasses[card.visual.bgColor] || "bg-gray-400";
-    const [imageError, setImageError] = useState(false);
-
-    if (card.type === "SPECIAL") {
-      return (
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4`}
-        >
-          <div className="text-center">
-            <p className="text-2xl font-bold text-white mb-2">SPECIAL</p>
-            <p className="text-lg text-white/90">{card.visual.specialType}</p>
-          </div>
-        </motion.div>
-      );
-    }
-
-    // NORMAL card
-    const imagePath = `/assets/cards/${card.visual.kind}/variants/${card.visual.style}.png`;
-
-    return (
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
-      >
-        {!imageError && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <img
-              src={imagePath}
-              alt={`${card.visual.kind} ${card.visual.style}`}
-              className="object-contain w-full h-full"
-              onError={() => setImageError(true)}
-            />
-          </div>
-        )}
-        {/* Fallback text if image fails to load */}
-        {imageError && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-3xl font-bold text-white uppercase drop-shadow-lg">
-              {card.visual.kind}
-            </p>
-          </div>
-        )}
-        {/* Card label */}
-        <div className="absolute bottom-2 left-0 right-0 text-center">
-          <p className="text-sm font-semibold text-white/90 uppercase drop-shadow">
-            {card.visual.kind}
-          </p>
-        </div>
-      </motion.div>
-    );
   };
 
   return (
@@ -459,25 +478,93 @@ export default function Home() {
                   </p>
                 </div>
 
-                {/* Card Display */}
+                {/* Pile Display */}
                 <div className="mb-6 flex flex-col items-center">
                   <div className="w-full max-w-sm">
-                    {roomState.game.currentCard ? (
-                      <CardDisplay card={roomState.game.currentCard} />
+                    {roomState.game.topCard ? (
+                      <CardDisplay card={roomState.game.topCard} />
                     ) : (
                       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-8 border-4 border-gray-300 dark:border-gray-600 min-h-[280px] flex items-center justify-center">
                         <div className="text-center text-gray-400 dark:text-gray-600">
-                          <p className="text-xl">Pila de cartas</p>
-                          <p className="text-sm mt-2">Haz flip para revelar</p>
+                          <p className="text-xl">Pila vacía</p>
+                          <p className="text-sm mt-2">Haz flip para empezar</p>
                         </div>
                       </div>
                     )}
                     <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
-                      <p>Deck: {roomState.game.deckCount} cartas</p>
-                      <p>Descartes: {roomState.game.discardCount}</p>
+                      <p>Pila: {roomState.game.pileCount} cartas</p>
                     </div>
                   </div>
                 </div>
+
+                {/* Claim Overlay */}
+                {roomState.game.claim && (() => {
+                  const claim = roomState.game.claim!;
+                  const elapsed = currentTime - claim.openedAt;
+                  const timeLeft = Math.max(0, CLAIM_WINDOW_MS - elapsed);
+                  const timeLeftSeconds = (timeLeft / 1000).toFixed(1);
+                  const claimers = claim.claimers || [];
+
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+                    >
+                      <motion.div
+                        initial={{ scale: 0.9 }}
+                        animate={{ scale: 1 }}
+                        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4"
+                      >
+                        <h3 className="text-3xl font-bold text-center mb-2 text-red-600 dark:text-red-400">
+                          ⚡ CLAIM! ⚡
+                        </h3>
+                        <p className="text-center text-gray-600 dark:text-gray-400 mb-2">
+                          ¡Coincidencia! Haz click en CLAIM para intentar ganar la pila.
+                        </p>
+                        <div className="text-center mb-6">
+                          <div className="text-4xl font-bold text-red-600 dark:text-red-400">
+                            {timeLeftSeconds}s
+                          </div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            Tiempo restante
+                          </div>
+                        </div>
+                        {claimers.length > 0 && (
+                          <div className="mb-4">
+                            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                              Claimers ({claimers.length}):
+                            </p>
+                            <div className="space-y-1">
+                              {claimers.map((claimerId: string, index: number) => {
+                                const claimer = roomState.players.find(
+                                  (p) => p.id === claimerId
+                                );
+                                return (
+                                  <div
+                                    key={claimerId}
+                                    className="text-sm text-gray-600 dark:text-gray-400"
+                                  >
+                                    {index + 1}. {claimer?.name || "Unknown"}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <button
+                          onClick={handleClaim}
+                          className="w-full px-6 py-4 bg-red-600 hover:bg-red-700 text-white font-bold text-xl rounded-lg shadow-lg transition-colors mb-4"
+                        >
+                          🎯 CLAIM
+                        </button>
+                        <div className="text-center text-xs text-gray-500 dark:text-gray-400">
+                          Haz click rápido para ganar la pila
+                        </div>
+                      </motion.div>
+                    </motion.div>
+                  );
+                })()}
 
                 {/* Flip Button */}
                 <div className="mb-6">
@@ -486,17 +573,22 @@ export default function Home() {
                     disabled={
                       !socketId ||
                       roomState.game.turnPlayerId !== socketId ||
-                      !socket
+                      !socket ||
+                      !!roomState.game.claim
                     }
                     className={`w-full px-6 py-4 rounded-lg font-bold text-lg transition-all ${
-                      socketId && roomState.game.turnPlayerId === socketId
+                      socketId &&
+                      roomState.game.turnPlayerId === socketId &&
+                      !roomState.game.claim
                         ? "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
                         : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                     }`}
                   >
-                    {socketId && roomState.game.turnPlayerId === socketId
-                      ? "🃏 Flip Card"
-                      : "Esperando tu turno..."}
+                    {roomState.game.claim
+                      ? "Esperando resolución de claim..."
+                      : socketId && roomState.game.turnPlayerId === socketId
+                        ? "🃏 Flip Card"
+                        : "Esperando tu turno..."}
                   </button>
                 </div>
 
@@ -510,6 +602,7 @@ export default function Home() {
                       const isPlayerHost = player.id === roomState.hostId;
                       const isCurrentTurn =
                         player.id === roomState.game?.turnPlayerId;
+                      const handCount = roomState.game?.handCounts[player.id] || 0;
                       return (
                         <motion.div
                           key={player.id}
@@ -542,6 +635,9 @@ export default function Home() {
                               </span>
                             )}
                           </div>
+                          <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">
+                            {handCount} cartas
+                          </span>
                         </motion.div>
                       );
                     })}

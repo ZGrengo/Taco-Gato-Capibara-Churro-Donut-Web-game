@@ -28,6 +28,14 @@ export const StartGameSchema = z.object({});
 // Flip request payload (client -> server) - no payload needed
 export const FlipRequestSchema = z.object({});
 
+// Claim request payload (client -> server) - no payload needed
+export const ClaimRequestSchema = z.object({});
+
+// Claim attempt payload (client -> server)
+export const ClaimAttemptSchema = z.object({
+  claimId: z.string(),
+});
+
 // Player schema
 export const PlayerSchema = z.object({
   id: z.string(),
@@ -71,16 +79,23 @@ export const CardSchema = z.object({
   visual: CardVisualSchema,
 });
 
+// Claim window public state (sent to clients)
+export const ClaimWindowPublicSchema = z.object({
+  claimId: z.string(),
+  openedAt: z.number(),
+  claimers: z.array(z.string()), // Array of player IDs in order of claim
+});
+
 // Game state schema
 export const GameStateSchema = z.object({
   turnPlayerId: z.string(),
   turnIndex: z.number(),
   wordIndex: z.number(),
   currentWord: KindSchema,
-  currentCard: CardSchema.optional(),
-  deckCount: z.number(),
-  discardCount: z.number(),
-  lastFlipAt: z.number().optional(),
+  pileCount: z.number(),
+  topCard: CardSchema.optional(),
+  handCounts: z.record(z.string(), z.number()), // Record<playerId, count>
+  claim: ClaimWindowPublicSchema.optional(),
 });
 
 // Room state (server -> client)
@@ -104,6 +119,9 @@ export type RoomJoinPayload = z.infer<typeof RoomJoinSchema>;
 export type ReadyTogglePayload = z.infer<typeof ReadyToggleSchema>;
 export type StartGamePayload = z.infer<typeof StartGameSchema>;
 export type FlipRequestPayload = z.infer<typeof FlipRequestSchema>;
+export type ClaimRequestPayload = z.infer<typeof ClaimRequestSchema>;
+export type ClaimAttemptPayload = z.infer<typeof ClaimAttemptSchema>;
+export type ClaimWindowPublic = z.infer<typeof ClaimWindowPublicSchema>;
 export type Player = z.infer<typeof PlayerSchema>;
 export type Kind = z.infer<typeof KindSchema>;
 export type Word = Kind; // Legacy alias

@@ -1,5 +1,11 @@
 import type { Room, Player, Phase, Card, GameState } from "@acme/shared";
-import { createPlayer, KINDS, BG_COLORS, STYLES } from "@acme/shared";
+import {
+  createPlayer,
+  KINDS,
+  BG_COLORS,
+  STYLES,
+  CLAIM_WINDOW_MS,
+} from "@acme/shared";
 import { randomUUID } from "crypto";
 
 /**
@@ -106,15 +112,26 @@ function generateDeck(): Card[] {
 }
 
 /**
+ * Claim window internal state
+ */
+interface ClaimWindow {
+  id: string;
+  opensAt: number;
+  closesAt: number;
+  triggerTurnIndex: number; // Index of player who triggered the claim
+  claimers: string[]; // Array of player IDs in order of claim
+  timeoutId?: NodeJS.Timeout; // Timeout to close the claim window
+}
+
+/**
  * Internal game state (server-side only)
  */
 interface InternalGameState {
-  deck: Card[];
-  discard: Card[];
-  currentCard?: Card;
+  hands: Record<string, Card[]>; // playerId -> cards
+  pile: Card[]; // Central pile
   turnIndex: number;
   wordIndex: number;
-  lastFlipAt?: number;
+  claim?: ClaimWindow;
 }
 
 /**
@@ -130,6 +147,14 @@ interface RoomWithGame extends Room {
 export class RoomManager {
   private rooms = new Map<string, RoomWithGame>();
   private playerToRoom = new Map<string, string>(); // playerId -> roomCode
+  private io?: any; // Socket.IO server instance (set externally)
+
+  /**
+   * Sets the Socket.IO server instance for emitting events
+   */
+  setIO(io: any): void {
+    this.io = io;
+  }
 
   /**
    * Creates a new room with the given player
@@ -205,14 +230,22 @@ export class RoomManager {
       return null;
     }
 
-    // If in game, adjust turn index
+    // If in game, adjust turn index and handle hands
     if (wasInGame && room.internalGame) {
+      // Remove player's hand (cards are lost)
+      delete room.internalGame.hands[playerId];
+
       // If the leaving player was before or at the current turn index, adjust
       if (playerIndex <= room.internalGame.turnIndex) {
-        room.internalGame.turnIndex =
-          (room.internalGame.turnIndex - 1 + room.players.length) %
-          room.players.length;
+        const nextIndex = this.findNextPlayerWithCards(
+          room,
+          room.internalGame.turnIndex % room.players.length
+        );
+        if (nextIndex !== null) {
+          room.internalGame.turnIndex = nextIndex;
+        }
       }
+
       // If less than 2 players remain, end game
       if (room.players.length < 2) {
         room.phase = "ENDED";
@@ -264,10 +297,23 @@ export class RoomManager {
     // Generate complete deck of 64 cards (55 normal + 9 special)
     const deck = generateDeck();
 
+    // Distribute cards evenly to players (round-robin)
+    const hands: Record<string, Card[]> = {};
+    room.players.forEach((player) => {
+      hands[player.id] = [];
+    });
+
+    // Round-robin distribution
+    let playerIndex = 0;
+    for (const card of deck) {
+      const playerId = room.players[playerIndex].id;
+      hands[playerId].push(card);
+      playerIndex = (playerIndex + 1) % room.players.length;
+    }
+
     room.internalGame = {
-      deck,
-      discard: [],
-      currentCard: undefined,
+      hands,
+      pile: [],
       turnIndex: 0,
       wordIndex: 0,
     };
@@ -287,15 +333,36 @@ export class RoomManager {
       return undefined;
     }
 
+    // Calculate hand counts
+    const handCounts: Record<string, number> = {};
+    room.players.forEach((player) => {
+      handCounts[player.id] = internalGame.hands[player.id]?.length || 0;
+    });
+
+    // Get top card from pile
+    const topCard =
+      internalGame.pile.length > 0
+        ? internalGame.pile[internalGame.pile.length - 1]
+        : undefined;
+
+    // Build claim window public state if exists
+    const claim = internalGame.claim
+      ? {
+          claimId: internalGame.claim.id,
+          openedAt: internalGame.claim.opensAt,
+          claimers: [...internalGame.claim.claimers],
+        }
+      : undefined;
+
     return {
       turnPlayerId: turnPlayer.id,
       turnIndex: internalGame.turnIndex,
       wordIndex: internalGame.wordIndex,
       currentWord: KINDS[internalGame.wordIndex],
-      currentCard: internalGame.currentCard,
-      deckCount: internalGame.deck.length,
-      discardCount: internalGame.discard.length,
-      lastFlipAt: internalGame.lastFlipAt,
+      pileCount: internalGame.pile.length,
+      topCard,
+      handCounts,
+      claim,
     };
   }
 
@@ -335,6 +402,132 @@ export class RoomManager {
   }
 
   /**
+   * Resolves and closes the claim window
+   */
+  private resolveClaim(room: RoomWithGame): void {
+    if (!room.internalGame?.claim) return;
+
+    const claim = room.internalGame.claim;
+    const allPlayerIds = room.players.map((p) => p.id);
+    const nonClaimers = allPlayerIds.filter(
+      (playerId) => !claim.claimers.includes(playerId)
+    );
+
+    // Clear timeout if exists
+    if (claim.timeoutId) {
+      clearTimeout(claim.timeoutId);
+    }
+
+    if (nonClaimers.length > 0) {
+      // CASE A: Not everyone claimed - distribute pile to non-claimers
+      const pile = [...room.internalGame.pile];
+      room.internalGame.pile = [];
+
+      // Distribute round-robin
+      let cardIndex = 0;
+      for (const card of pile) {
+        const playerId = nonClaimers[cardIndex % nonClaimers.length];
+        const hand = room.internalGame?.hands[playerId];
+        if (hand) {
+          hand.push(card);
+        }
+        cardIndex++;
+      }
+    } else {
+      // CASE B: Everyone claimed - last claimer (slowest) loses
+      if (claim.claimers.length > 0) {
+        const loserId = claim.claimers[claim.claimers.length - 1];
+        const loserHand = room.internalGame.hands[loserId];
+        if (loserHand) {
+          loserHand.push(...room.internalGame.pile);
+        }
+      }
+      room.internalGame.pile = [];
+    }
+
+    // Clear claim
+    room.internalGame.claim = undefined;
+
+    // Reset word index to 0 (taco) after claim resolution
+    if (room.internalGame) {
+      room.internalGame.wordIndex = 0;
+
+      // Advance turn index to next player with cards
+      const nextIndex = this.findNextPlayerWithCards(
+        room,
+        (claim.triggerTurnIndex + 1) % room.players.length
+      );
+      if (nextIndex === null) {
+        // No players with cards, end game
+        room.phase = "ENDED";
+        room.internalGame = undefined;
+      } else {
+        room.internalGame.turnIndex = nextIndex;
+      }
+    }
+  }
+
+  /**
+   * Finds next player with cards
+   */
+  private findNextPlayerWithCards(
+    room: RoomWithGame,
+    startIndex: number
+  ): number | null {
+    const { internalGame } = room;
+    if (!internalGame) return null;
+
+    for (let i = 0; i < room.players.length; i++) {
+      const index = (startIndex + i) % room.players.length;
+      const player = room.players[index];
+      const hand = internalGame.hands[player.id];
+      if (hand && hand.length > 0) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Opens a claim window for a room
+   */
+  private openClaimWindow(room: RoomWithGame, reason: "MATCH" | "SPECIAL"): void {
+    if (!room.internalGame) return;
+
+    const now = Date.now();
+    const claimId = randomUUID();
+
+    // Clear any existing timeout
+    if (room.internalGame.claim?.timeoutId) {
+      clearTimeout(room.internalGame.claim.timeoutId);
+    }
+
+    room.internalGame.claim = {
+      id: claimId,
+      opensAt: now,
+      closesAt: now + CLAIM_WINDOW_MS,
+      triggerTurnIndex: room.internalGame.turnIndex,
+      claimers: [],
+    };
+
+    // Set timeout to resolve claim
+    room.internalGame.claim.timeoutId = setTimeout(() => {
+      this.resolveClaim(room);
+      if (this.io && room.code) {
+        const gameState = this.getGameState(room);
+        this.io.to(room.code).emit("ROOM_STATE", {
+          code: room.code,
+          phase: room.phase,
+          hostId: room.hostId,
+          players: room.players,
+          createdAt: room.createdAt,
+          game: gameState,
+        });
+      }
+    }, CLAIM_WINDOW_MS);
+  }
+
+  /**
    * Handles a flip request from a player
    */
   flipCard(playerId: string): Room | null {
@@ -345,47 +538,119 @@ export class RoomManager {
 
     const { internalGame } = room;
 
+    // Cannot flip if claim is active
+    if (internalGame.claim) {
+      return null;
+    }
+
     // Validate it's the player's turn
     const currentPlayer = room.players[internalGame.turnIndex];
     if (!currentPlayer || currentPlayer.id !== playerId) {
       return null;
     }
 
-    // If deck is empty, recycle discard (except currentCard)
-    if (internalGame.deck.length === 0) {
-      if (internalGame.discard.length === 0) {
-        // No cards left, game ends?
-        return null;
+    // Check if player has cards
+    const playerHand = internalGame.hands[playerId];
+    if (!playerHand || playerHand.length === 0) {
+      // Skip this player's turn
+      const nextIndex = this.findNextPlayerWithCards(
+        room,
+        (internalGame.turnIndex + 1) % room.players.length
+      );
+      if (nextIndex === null) {
+        // No players with cards, end game
+        room.phase = "ENDED";
+        room.internalGame = undefined;
+        return room;
       }
-      // Recycle discard into deck (shuffle)
-      internalGame.deck = shuffleArray(internalGame.discard);
-      internalGame.discard = [];
+      internalGame.turnIndex = nextIndex;
+      return room;
     }
 
-    // Move currentCard to discard if exists
-    if (internalGame.currentCard) {
-      internalGame.discard.push(internalGame.currentCard);
-    }
-
-    // Draw new card
-    const newCard = internalGame.deck.pop();
-    if (!newCard) {
+    // Take card from front of hand and add to pile
+    const card = playerHand.shift();
+    if (!card) {
       return null;
     }
 
-    internalGame.currentCard = newCard;
+    internalGame.pile.push(card);
 
-    // Advance word index (circular)
-    internalGame.wordIndex = (internalGame.wordIndex + 1) % KINDS.length;
+    // Check if match triggers claim window
+    const currentWord = KINDS[internalGame.wordIndex];
+    const isMatch = card.word === currentWord || card.type === "SPECIAL";
 
-    // Advance turn index (circular)
-    internalGame.turnIndex = (internalGame.turnIndex + 1) % room.players.length;
+    if (isMatch) {
+      // Open claim window
+      this.openClaimWindow(room, card.type === "SPECIAL" ? "SPECIAL" : "MATCH");
+    } else {
+      // Advance word index (circular) only if no claim
+      internalGame.wordIndex = (internalGame.wordIndex + 1) % KINDS.length;
+    }
 
-    // Update lastFlipAt timestamp
-    internalGame.lastFlipAt = Date.now();
+    // Advance turn index to next player with cards (if no claim opened)
+    if (!internalGame.claim) {
+      const nextIndex = this.findNextPlayerWithCards(
+        room,
+        (internalGame.turnIndex + 1) % room.players.length
+      );
+      if (nextIndex === null) {
+        // No players with cards, end game
+        room.phase = "ENDED";
+        room.internalGame = undefined;
+        return room;
+      }
+      internalGame.turnIndex = nextIndex;
+    }
 
     return room;
   }
+
+  /**
+   * Handles a claim attempt from a player
+   */
+  claimAttempt(playerId: string, claimId: string): Room | null {
+    const room = this.getPlayerRoom(playerId);
+    if (!room || !room.internalGame || room.phase !== "IN_GAME") {
+      return null;
+    }
+
+    const { internalGame } = room;
+    const now = Date.now();
+
+    // CASE C: False slap - claim outside window or wrong claimId
+    if (
+      !internalGame.claim ||
+      internalGame.claim.id !== claimId ||
+      now >= internalGame.claim.closesAt
+    ) {
+      // Player takes entire pile if not empty
+      if (internalGame.pile.length > 0) {
+        const playerHand = internalGame.hands[playerId];
+        if (playerHand) {
+          playerHand.push(...internalGame.pile);
+        }
+        internalGame.pile = [];
+      }
+
+      // Clear claim if exists
+      if (internalGame.claim) {
+        if (internalGame.claim.timeoutId) {
+          clearTimeout(internalGame.claim.timeoutId);
+        }
+        internalGame.claim = undefined;
+      }
+
+      return room;
+    }
+
+    // Valid claim - add player to claimers if not already there
+    if (!internalGame.claim.claimers.includes(playerId)) {
+      internalGame.claim.claimers.push(playerId);
+    }
+
+    return room;
+  }
+
 
   /**
    * Gets a room by code
