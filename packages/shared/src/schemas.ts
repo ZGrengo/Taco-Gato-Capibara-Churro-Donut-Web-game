@@ -53,6 +53,10 @@ export const CardBgColorSchema = z.enum(["yellow", "orange", "green", "blue", "r
 export const CardStyleSchema = z.enum(["style1", "style2", "style3"]);
 export const SpecialTypeSchema = z.enum(["SPECIAL_1", "SPECIAL_2", "SPECIAL_3"]);
 
+// Gesture types
+export const GestureTypeSchema = z.enum(["CLICK_FRENZY", "BUBBLES", "CIRCLE"]);
+export type GestureType = z.infer<typeof GestureTypeSchema>;
+
 // Card visual schemas
 export const CardVisualNormalSchema = z.object({
   kind: KindSchema,
@@ -84,6 +88,9 @@ export const ClaimWindowPublicSchema = z.object({
   claimId: z.string(),
   openedAt: z.number(),
   claimers: z.array(z.string()), // Array of player IDs in order of claim
+  reason: z.enum(["MATCH", "SPECIAL"]),
+  gestureType: GestureTypeSchema.nullable().optional(), // null for MATCH, gesture type for SPECIAL
+  specialType: SpecialTypeSchema.optional(), // Only present for SPECIAL cards
 });
 
 // Game state schema

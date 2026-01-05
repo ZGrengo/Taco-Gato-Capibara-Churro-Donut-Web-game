@@ -8,9 +8,17 @@ import {
   type ErrorPayload,
   type GameState,
   type Card,
+  type GestureType,
   CLAIM_WINDOW_MS,
+  CLICK_FRENZY_REQUIRED_CLICKS,
+  CLICK_FRENZY_MIN_INTERVAL_MS,
+  BUBBLES_COUNT,
+  BUBBLES_MIN_DISTANCE_PX,
+  BUBBLES_SIZE_PX,
 } from "@acme/shared";
 import { motion } from "framer-motion";
+import { ClickFrenzyGesture } from "../components/ClickFrenzyGesture";
+import { BubblesGesture } from "../components/BubblesGesture";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
@@ -27,7 +35,7 @@ function CardDisplay({ card }: { card: Card }) {
   const bgColor = bgColorClasses[card.visual.bgColor] || "bg-gray-400";
   const [imageError, setImageError] = useState(false);
 
-  if (card.type === "SPECIAL") {
+  if (card.type === "SPECIAL" && card.visual.kind === "special") {
     return (
       <motion.div
         key={card.id}
@@ -44,12 +52,13 @@ function CardDisplay({ card }: { card: Card }) {
     );
   }
 
-  // NORMAL card
-  const imagePath = `/assets/cards/${card.visual.kind}/variants/${card.visual.style}.png`;
+  // NORMAL card - visual.kind must be one of the normal kinds
+  if (card.visual.kind !== "special") {
+    const imagePath = `/assets/cards/${card.visual.kind}/variants/${card.visual.style}.png`;
 
-  return (
-    <motion.div
-      key={card.id}
+    return (
+      <motion.div
+        key={card.id}
       initial={{ scale: 0.8, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.3 }}
@@ -79,8 +88,12 @@ function CardDisplay({ card }: { card: Card }) {
           {card.visual.kind}
         </p>
       </div>
-    </motion.div>
-  );
+      </motion.div>
+    );
+  }
+
+  // Fallback (shouldn't happen)
+  return null;
 }
 
 export default function Home() {
@@ -500,10 +513,16 @@ export default function Home() {
                 {/* Claim Overlay */}
                 {roomState.game.claim && (() => {
                   const claim = roomState.game.claim!;
-                  const elapsed = currentTime - claim.openedAt;
-                  const timeLeft = Math.max(0, CLAIM_WINDOW_MS - elapsed);
+                  const closesAt = claim.openedAt + CLAIM_WINDOW_MS;
+                  const timeLeft = Math.max(0, closesAt - currentTime);
                   const timeLeftSeconds = (timeLeft / 1000).toFixed(1);
                   const claimers = claim.claimers || [];
+                  const hasGesture = claim.gestureType && claim.gestureType !== null;
+
+                  // Handle gesture completion - auto-send claim
+                  const handleGestureComplete = () => {
+                    handleClaim();
+                  };
 
                   return (
                     <motion.div
@@ -519,19 +538,55 @@ export default function Home() {
                         <h3 className="text-3xl font-bold text-center mb-2 text-red-600 dark:text-red-400">
                           ⚡ CLAIM! ⚡
                         </h3>
-                        <p className="text-center text-gray-600 dark:text-gray-400 mb-2">
-                          ¡Coincidencia! Haz click en CLAIM para intentar ganar la pila.
+                        <p className="text-center text-gray-600 dark:text-gray-400 mb-4">
+                          {claim.reason === "SPECIAL"
+                            ? `¡Carta ESPECIAL (${claim.specialType})!`
+                            : `¡Coincidencia con "${roomState.game.currentWord}"!`}
                         </p>
-                        <div className="text-center mb-6">
-                          <div className="text-4xl font-bold text-red-600 dark:text-red-400">
-                            {timeLeftSeconds}s
-                          </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Tiempo restante
-                          </div>
-                        </div>
+
+                        {/* Gesture component or simple claim button */}
+                        {hasGesture && claim.gestureType === "CLICK_FRENZY" ? (
+                          <ClickFrenzyGesture
+                            claimId={claim.claimId}
+                            closesAt={closesAt}
+                            requiredClicks={CLICK_FRENZY_REQUIRED_CLICKS}
+                            minIntervalMs={CLICK_FRENZY_MIN_INTERVAL_MS}
+                            onComplete={handleGestureComplete}
+                          />
+                        ) : hasGesture && claim.gestureType === "BUBBLES" ? (
+                          <BubblesGesture
+                            claimId={claim.claimId}
+                            closesAt={closesAt}
+                            bubbleCount={BUBBLES_COUNT}
+                            minDistancePx={BUBBLES_MIN_DISTANCE_PX}
+                            bubbleSizePx={BUBBLES_SIZE_PX}
+                            onComplete={handleGestureComplete}
+                          />
+                        ) : (
+                          <>
+                            <div className="text-center mb-6">
+                              <div className="text-4xl font-bold text-red-600 dark:text-red-400">
+                                {timeLeftSeconds}s
+                              </div>
+                              <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                Tiempo restante
+                              </div>
+                            </div>
+                            <button
+                              onClick={handleClaim}
+                              className="w-full px-6 py-4 bg-red-600 hover:bg-red-700 text-white font-bold text-xl rounded-lg shadow-lg transition-colors mb-4"
+                            >
+                              🎯 CLAIM
+                            </button>
+                            <div className="text-center text-xs text-gray-500 dark:text-gray-400">
+                              Haz click rápido para ganar la pila
+                            </div>
+                          </>
+                        )}
+
+                        {/* Claimers list */}
                         {claimers.length > 0 && (
-                          <div className="mb-4">
+                          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                               Claimers ({claimers.length}):
                             </p>
@@ -552,15 +607,6 @@ export default function Home() {
                             </div>
                           </div>
                         )}
-                        <button
-                          onClick={handleClaim}
-                          className="w-full px-6 py-4 bg-red-600 hover:bg-red-700 text-white font-bold text-xl rounded-lg shadow-lg transition-colors mb-4"
-                        >
-                          🎯 CLAIM
-                        </button>
-                        <div className="text-center text-xs text-gray-500 dark:text-gray-400">
-                          Haz click rápido para ganar la pila
-                        </div>
                       </motion.div>
                     </motion.div>
                   );

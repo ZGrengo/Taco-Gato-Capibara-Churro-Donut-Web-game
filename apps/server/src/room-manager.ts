@@ -1,4 +1,4 @@
-import type { Room, Player, Phase, Card, GameState } from "@acme/shared";
+import type { Room, Player, Phase, Card, GameState, GestureType } from "@acme/shared";
 import {
   createPlayer,
   KINDS,
@@ -121,6 +121,8 @@ interface ClaimWindow {
   triggerTurnIndex: number; // Index of player who triggered the claim
   claimers: string[]; // Array of player IDs in order of claim
   timeoutId?: NodeJS.Timeout; // Timeout to close the claim window
+  gestureType?: GestureType | null; // Gesture required for this claim (null for MATCH)
+  specialType?: "SPECIAL_1" | "SPECIAL_2" | "SPECIAL_3"; // Special card type if applicable
 }
 
 /**
@@ -351,6 +353,13 @@ export class RoomManager {
           claimId: internalGame.claim.id,
           openedAt: internalGame.claim.opensAt,
           claimers: [...internalGame.claim.claimers],
+          reason:
+            internalGame.pile.length > 0 &&
+            internalGame.pile[internalGame.pile.length - 1]?.type === "SPECIAL"
+              ? ("SPECIAL" as const)
+              : ("MATCH" as const),
+          gestureType: internalGame.claim.gestureType ?? null,
+          specialType: internalGame.claim.specialType,
         }
       : undefined;
 
@@ -489,9 +498,27 @@ export class RoomManager {
   }
 
   /**
+   * Maps special type to gesture type
+   */
+  private mapSpecialTypeToGesture(specialType: "SPECIAL_1" | "SPECIAL_2" | "SPECIAL_3"): GestureType {
+    switch (specialType) {
+      case "SPECIAL_1":
+        return "CLICK_FRENZY";
+      case "SPECIAL_2":
+        return "BUBBLES";
+      case "SPECIAL_3":
+        return "CIRCLE";
+    }
+  }
+
+  /**
    * Opens a claim window for a room
    */
-  private openClaimWindow(room: RoomWithGame, reason: "MATCH" | "SPECIAL"): void {
+  private openClaimWindow(
+    room: RoomWithGame,
+    reason: "MATCH" | "SPECIAL",
+    card?: Card
+  ): void {
     if (!room.internalGame) return;
 
     const now = Date.now();
@@ -502,12 +529,23 @@ export class RoomManager {
       clearTimeout(room.internalGame.claim.timeoutId);
     }
 
+    // Determine gesture type and special type if it's a SPECIAL card
+    let gestureType: GestureType | null = null;
+    let specialType: "SPECIAL_1" | "SPECIAL_2" | "SPECIAL_3" | undefined = undefined;
+
+    if (reason === "SPECIAL" && card && card.type === "SPECIAL" && card.visual.kind === "special") {
+      specialType = card.visual.specialType;
+      gestureType = this.mapSpecialTypeToGesture(specialType);
+    }
+
     room.internalGame.claim = {
       id: claimId,
       opensAt: now,
       closesAt: now + CLAIM_WINDOW_MS,
       triggerTurnIndex: room.internalGame.turnIndex,
       claimers: [],
+      gestureType,
+      specialType,
     };
 
     // Set timeout to resolve claim
@@ -580,8 +618,12 @@ export class RoomManager {
     const isMatch = card.word === currentWord || card.type === "SPECIAL";
 
     if (isMatch) {
-      // Open claim window
-      this.openClaimWindow(room, card.type === "SPECIAL" ? "SPECIAL" : "MATCH");
+      // Open claim window (pass card to determine gesture type if SPECIAL)
+      this.openClaimWindow(
+        room,
+        card.type === "SPECIAL" ? "SPECIAL" : "MATCH",
+        card
+      );
     } else {
       // Advance word index (circular) only if no claim
       internalGame.wordIndex = (internalGame.wordIndex + 1) % KINDS.length;
