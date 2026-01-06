@@ -15,10 +15,17 @@ import {
   BUBBLES_COUNT,
   BUBBLES_MIN_DISTANCE_PX,
   BUBBLES_SIZE_PX,
+  CIRCLE_MIN_PATH_LEN,
+  CIRCLE_CLOSE_DIST,
+  CIRCLE_MIN_RADIUS,
+  CIRCLE_MAX_RADIUS_VAR,
+  CIRCLE_TARGET_CENTER_TOL,
+  CIRCLE_MIN_POINTS,
 } from "@acme/shared";
 import { motion } from "framer-motion";
 import { ClickFrenzyGesture } from "../components/ClickFrenzyGesture";
 import { BubblesGesture } from "../components/BubblesGesture";
+import { CircleGesture } from "../components/CircleGesture";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
@@ -569,6 +576,18 @@ export default function Home() {
                             minDistancePx={BUBBLES_MIN_DISTANCE_PX}
                             bubbleSizePx={BUBBLES_SIZE_PX}
                             onComplete={handleGestureComplete}
+                          />
+                        ) : hasGesture && claim.gestureType === "CIRCLE" ? (
+                          <CircleGesture
+                            claimId={claim.id}
+                            closesAt={closesAt}
+                            onComplete={handleGestureComplete}
+                            minPathLen={CIRCLE_MIN_PATH_LEN}
+                            closeDist={CIRCLE_CLOSE_DIST}
+                            minRadius={CIRCLE_MIN_RADIUS}
+                            maxRadiusVar={CIRCLE_MAX_RADIUS_VAR}
+                            targetCenterTol={CIRCLE_TARGET_CENTER_TOL}
+                            minPoints={CIRCLE_MIN_POINTS}
                           />
                         ) : (
                           <>

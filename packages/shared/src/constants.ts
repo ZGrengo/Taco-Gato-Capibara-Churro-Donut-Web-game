@@ -25,3 +25,11 @@ export const BUBBLES_COUNT = 4;
 export const BUBBLES_MIN_DISTANCE_PX = 70;
 export const BUBBLES_SIZE_PX = 56;
 
+// Circle gesture constants
+export const CIRCLE_MIN_PATH_LEN = 300;
+export const CIRCLE_CLOSE_DIST = 40;
+export const CIRCLE_MIN_RADIUS = 40;
+export const CIRCLE_MAX_RADIUS_VAR = 0.35;
+export const CIRCLE_TARGET_CENTER_TOL = 70;
+export const CIRCLE_MIN_POINTS = 12;
+
