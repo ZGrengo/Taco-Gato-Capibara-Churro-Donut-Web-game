@@ -194,7 +194,7 @@ export default function Home() {
 
   const handleClaim = () => {
     if (!socket || !roomState || !roomState.game?.claim) return;
-    socket.emit(EVENTS.CLAIM_ATTEMPT, { claimId: roomState.game.claim.claimId });
+    socket.emit(EVENTS.CLAIM_ATTEMPT, { claimId: roomState.game.claim.id });
   };
 
   // Check if current player is host
@@ -486,9 +486,17 @@ export default function Home() {
                   <p className="text-md text-indigo-700 dark:text-indigo-300">
                     Palabra actual:{" "}
                     <span className="font-bold uppercase">
-                      {roomState.game.currentWord}
+                      {roomState.game.spokenWord || "—"}
                     </span>
                   </p>
+                  {roomState.game.pileCount > 0 && (
+                    <p className="text-sm text-indigo-600 dark:text-indigo-400">
+                      Siguiente:{" "}
+                      <span className="font-semibold uppercase">
+                        {roomState.game.currentWord}
+                      </span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Pile Display */}
@@ -513,7 +521,7 @@ export default function Home() {
                 {/* Claim Overlay */}
                 {roomState.game.claim && (() => {
                   const claim = roomState.game.claim!;
-                  const closesAt = claim.openedAt + CLAIM_WINDOW_MS;
+                  const closesAt = claim.closesAt;
                   const timeLeft = Math.max(0, closesAt - currentTime);
                   const timeLeftSeconds = (timeLeft / 1000).toFixed(1);
                   const claimers = claim.claimers || [];
@@ -528,7 +536,7 @@ export default function Home() {
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+                      className="fixed inset-0 bg-black/70 flex items-start justify-center z-50 pt-4"
                     >
                       <motion.div
                         initial={{ scale: 0.9 }}
@@ -541,13 +549,13 @@ export default function Home() {
                         <p className="text-center text-gray-600 dark:text-gray-400 mb-4">
                           {claim.reason === "SPECIAL"
                             ? `¡Carta ESPECIAL (${claim.specialType})!`
-                            : `¡Coincidencia con "${roomState.game.currentWord}"!`}
+                            : `¡Coincidencia con "${roomState.game.spokenWord || "taco"}"!`}
                         </p>
 
                         {/* Gesture component or simple claim button */}
                         {hasGesture && claim.gestureType === "CLICK_FRENZY" ? (
                           <ClickFrenzyGesture
-                            claimId={claim.claimId}
+                            claimId={claim.id}
                             closesAt={closesAt}
                             requiredClicks={CLICK_FRENZY_REQUIRED_CLICKS}
                             minIntervalMs={CLICK_FRENZY_MIN_INTERVAL_MS}
@@ -555,7 +563,7 @@ export default function Home() {
                           />
                         ) : hasGesture && claim.gestureType === "BUBBLES" ? (
                           <BubblesGesture
-                            claimId={claim.claimId}
+                            claimId={claim.id}
                             closesAt={closesAt}
                             bubbleCount={BUBBLES_COUNT}
                             minDistancePx={BUBBLES_MIN_DISTANCE_PX}

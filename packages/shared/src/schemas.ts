@@ -85,8 +85,9 @@ export const CardSchema = z.object({
 
 // Claim window public state (sent to clients)
 export const ClaimWindowPublicSchema = z.object({
-  claimId: z.string(),
-  openedAt: z.number(),
+  id: z.string(),
+  opensAt: z.number(),
+  closesAt: z.number(),
   claimers: z.array(z.string()), // Array of player IDs in order of claim
   reason: z.enum(["MATCH", "SPECIAL"]),
   gestureType: GestureTypeSchema.nullable().optional(), // null for MATCH, gesture type for SPECIAL
@@ -98,7 +99,8 @@ export const GameStateSchema = z.object({
   turnPlayerId: z.string(),
   turnIndex: z.number(),
   wordIndex: z.number(),
-  currentWord: KindSchema,
+  currentWord: KindSchema, // NEXT word (will be "said" in next flip)
+  spokenWord: KindSchema.nullable().optional(), // Word that was "said" in the last flip (null if pile empty)
   pileCount: z.number(),
   topCard: CardSchema.optional(),
   handCounts: z.record(z.string(), z.number()), // Record<playerId, count>

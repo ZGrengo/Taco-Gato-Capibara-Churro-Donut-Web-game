@@ -317,7 +317,7 @@ export class RoomManager {
       hands,
       pile: [],
       turnIndex: 0,
-      wordIndex: 0,
+      wordIndex: 0, // Start at "taco" (index 0)
     };
   }
 
@@ -347,11 +347,18 @@ export class RoomManager {
         ? internalGame.pile[internalGame.pile.length - 1]
         : undefined;
 
+    // Calculate spoken word (word that was "said" in the last flip)
+    const spokenWord =
+      internalGame.pile.length > 0
+        ? KINDS[(internalGame.pile.length - 1) % KINDS.length]
+        : null;
+
     // Build claim window public state if exists
     const claim = internalGame.claim
       ? {
-          claimId: internalGame.claim.id,
-          openedAt: internalGame.claim.opensAt,
+          id: internalGame.claim.id,
+          opensAt: internalGame.claim.opensAt,
+          closesAt: internalGame.claim.closesAt,
           claimers: [...internalGame.claim.claimers],
           reason:
             internalGame.pile.length > 0 &&
@@ -367,7 +374,8 @@ export class RoomManager {
       turnPlayerId: turnPlayer.id,
       turnIndex: internalGame.turnIndex,
       wordIndex: internalGame.wordIndex,
-      currentWord: KINDS[internalGame.wordIndex],
+      currentWord: KINDS[internalGame.wordIndex], // NEXT word (for UI)
+      spokenWord, // Word that was "said" in the last flip
       pileCount: internalGame.pile.length,
       topCard,
       handCounts,
@@ -457,7 +465,7 @@ export class RoomManager {
     // Clear claim
     room.internalGame.claim = undefined;
 
-    // Reset word index to 0 (taco) after claim resolution
+    // Reset word index to 0 ("taco") after claim resolution
     if (room.internalGame) {
       room.internalGame.wordIndex = 0;
 
@@ -605,6 +613,9 @@ export class RoomManager {
       return room;
     }
 
+    // Capture pile size BEFORE adding the card
+    const pileSizeBeforeFlip = internalGame.pile.length;
+
     // Take card from front of hand and add to pile
     const card = playerHand.shift();
     if (!card) {
@@ -613,9 +624,14 @@ export class RoomManager {
 
     internalGame.pile.push(card);
 
+    // Calculate spoken word for this flip based on pile size BEFORE flip
+    // This ensures the word matches what was "said" when flipping
+    const spokenWordForThisFlip = KINDS[pileSizeBeforeFlip % KINDS.length];
+
     // Check if match triggers claim window
-    const currentWord = KINDS[internalGame.wordIndex];
-    const isMatch = card.word === currentWord || card.type === "SPECIAL";
+    const isMatch =
+      card.type === "SPECIAL" ||
+      (card.type === "NORMAL" && card.word === spokenWordForThisFlip);
 
     if (isMatch) {
       // Open claim window (pass card to determine gesture type if SPECIAL)
@@ -624,9 +640,14 @@ export class RoomManager {
         card.type === "SPECIAL" ? "SPECIAL" : "MATCH",
         card
       );
+    }
+
+    // Always synchronize wordIndex with pile length (NEXT word for UI)
+    // wordIndex represents the word that will be "said" in the next flip
+    if (internalGame.pile.length === 0) {
+      internalGame.wordIndex = 0;
     } else {
-      // Advance word index (circular) only if no claim
-      internalGame.wordIndex = (internalGame.wordIndex + 1) % KINDS.length;
+      internalGame.wordIndex = internalGame.pile.length % KINDS.length;
     }
 
     // Advance turn index to next player with cards (if no claim opened)
