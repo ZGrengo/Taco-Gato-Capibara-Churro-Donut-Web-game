@@ -33,7 +33,7 @@ export const ClaimRequestSchema = z.object({});
 
 // Claim attempt payload (client -> server)
 export const ClaimAttemptSchema = z.object({
-  claimId: z.string(),
+  claimId: z.string().optional(),
 });
 
 // Player schema

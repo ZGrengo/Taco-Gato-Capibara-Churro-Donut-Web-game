@@ -73,29 +73,31 @@ export function ClickFrenzyGesture({
   const timeLeftSeconds = (timeLeft / 1000).toFixed(1);
 
   return (
-    <div className="w-full">
-      <div className="text-center mb-4">
-        <div className="text-3xl font-bold text-red-600 dark:text-red-400 mb-2">
-          {timeLeftSeconds}s
+    <div className="w-full h-full flex flex-col">
+      {/* Compact header for inline mode */}
+      <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between bg-white/90 dark:bg-gray-800/90 rounded-lg px-3 py-2 shadow-lg">
+        <div className="text-center flex-1">
+          <div className="text-lg font-bold text-red-600 dark:text-red-400">
+            {timeLeftSeconds}s
+          </div>
         </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          Tiempo restante
-        </div>
-      </div>
-
-      <div className="mb-4">
-        <div className="flex justify-between items-center mb-2">
+        <div className="flex-1 text-center">
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            Clicks: {clicksCount} / {requiredClicks}
+            {clicksCount} / {requiredClicks}
           </span>
-          {isComplete && (
-            <span className="text-sm font-bold text-green-600 dark:text-green-400">
+        </div>
+        {isComplete && (
+          <div className="flex-1 text-center">
+            <span className="text-xs font-bold text-green-600 dark:text-green-400">
               ✓ Completado!
             </span>
-          )}
-        </div>
-        {/* Progress bar */}
-        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+          </div>
+        )}
+      </div>
+
+      {/* Progress bar at bottom */}
+      <div className="absolute bottom-2 left-2 right-2 z-20">
+        <div className="w-full bg-gray-200/90 dark:bg-gray-700/90 rounded-full h-2 overflow-hidden">
           <motion.div
             className="bg-red-500 h-full"
             initial={{ width: 0 }}
@@ -105,17 +107,18 @@ export function ClickFrenzyGesture({
         </div>
       </div>
 
+      {/* Clickable area - covers entire pile */}
       <div
         onClick={handleClick}
         className={`
-          w-full h-48 rounded-xl border-4 border-dashed flex items-center justify-center
+          absolute inset-0 rounded-xl flex items-center justify-center
           transition-all cursor-pointer select-none
           ${
             isComplete
-              ? "bg-green-100 dark:bg-green-900/30 border-green-500 dark:border-green-400"
+              ? "bg-green-500/20 border-4 border-green-500 dark:border-green-400"
               : isExpired
-                ? "bg-gray-100 dark:bg-gray-700 border-gray-400 dark:border-gray-500 cursor-not-allowed"
-                : "bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 active:scale-95"
+                ? "bg-gray-500/20 border-4 border-gray-400 dark:border-gray-500 cursor-not-allowed"
+                : "bg-red-500/20 border-4 border-red-500 dark:border-red-400 hover:bg-red-500/30 active:scale-95"
           }
         `}
       >
@@ -123,7 +126,7 @@ export function ClickFrenzyGesture({
           <div className="text-center">
             <div className="text-4xl mb-2">🎯</div>
             <div className="text-lg font-bold text-green-700 dark:text-green-300">
-              ¡Claim enviado!
+              ¡Completado!
             </div>
           </div>
         ) : isExpired ? (

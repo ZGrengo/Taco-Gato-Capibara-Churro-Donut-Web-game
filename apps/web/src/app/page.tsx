@@ -150,6 +150,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [socketId, setSocketId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [isAttemptingClaim, setIsAttemptingClaim] = useState(false);
+  const [currentClaimId, setCurrentClaimId] = useState<string | null>(null);
 
   useEffect(() => {
     const newSocket = io(SOCKET_URL, {
@@ -236,9 +238,76 @@ export default function Home() {
     socket.emit(EVENTS.FLIP_REQUEST, {});
   };
 
-  const handleClaim = () => {
-    if (!socket || !roomState || !roomState.game?.claim) return;
-    socket.emit(EVENTS.CLAIM_ATTEMPT, { claimId: roomState.game.claim.id });
+  const handleClaim = (claimId?: string) => {
+    if (!socket || !roomState) return;
+    // Send CLAIM_ATTEMPT with optional claimId
+    socket.emit(EVENTS.CLAIM_ATTEMPT, claimId ? { claimId } : {});
+  };
+
+  // Reset claim attempt state when claim changes
+  useEffect(() => {
+    const claimId = roomState?.game?.claim?.id || null;
+    if (claimId !== currentClaimId) {
+      setCurrentClaimId(claimId);
+      setIsAttemptingClaim(false);
+    }
+  }, [roomState?.game?.claim?.id, currentClaimId]);
+
+  // Handle pile click - this is the main interaction point
+  const handlePileClick = (e: React.MouseEvent) => {
+    if (!socket || !roomState || !roomState.game) return;
+
+    // Check if player can participate (not OUT)
+    const myStatus =
+      socketId && roomState.game.playerStatuses
+        ? roomState.game.playerStatuses[socketId] || "ACTIVE"
+        : "ACTIVE";
+    if (myStatus === "OUT") return;
+
+    // If gesture is active, don't handle click here (let gesture handle it)
+    if (isAttemptingClaim && roomState.game.claim?.gestureType) {
+      // For CLICK_FRENZY, the gesture overlay will handle the click
+      // For other gestures, we don't want to interfere
+      return;
+    }
+
+    const claim = roomState.game.claim;
+
+    // If no claim active, this is a false slap
+    if (!claim) {
+      handleClaim();
+      return;
+    }
+
+    // Check if player already claimed (is in claimers list)
+    const alreadyClaimed = socketId && claim.claimers.includes(socketId);
+
+    // If player already claimed, don't allow reactivating gesture
+    if (alreadyClaimed) {
+      return;
+    }
+
+    const hasGesture = claim.gestureType && claim.gestureType !== null;
+
+    // If claim has gesture and we haven't started attempting, activate gesture mode
+    if (hasGesture && !isAttemptingClaim) {
+      setIsAttemptingClaim(true);
+      e.stopPropagation(); // Prevent any other handlers
+      return;
+    }
+
+    // If no gesture required, send claim immediately
+    if (!hasGesture) {
+      handleClaim(claim.id);
+    }
+    // If gesture is active, the gesture component will call handleClaim on completion
+  };
+
+  // Handle gesture completion
+  const handleGestureComplete = () => {
+    if (!roomState?.game?.claim) return;
+    handleClaim(roomState.game.claim.id);
+    setIsAttemptingClaim(false);
   };
 
   // Check if current player is host
@@ -543,146 +612,154 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Pile Display */}
+                {/* Pile Display - Clickable */}
                 <div className="mb-6 flex flex-col items-center">
-                  <div className="w-full max-w-sm">
-                    {roomState.game.topCard ? (
-                      <CardDisplay card={roomState.game.topCard} />
-                    ) : (
-                      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-8 border-4 border-gray-300 dark:border-gray-600 min-h-[280px] flex items-center justify-center">
-                        <div className="text-center text-gray-400 dark:text-gray-600">
-                          <p className="text-xl">Pila vacía</p>
-                          <p className="text-sm mt-2">Haz flip para empezar</p>
+                  <div className="relative w-full max-w-sm">
+                    {/* Pile container - clickable */}
+                    <div
+                      onClick={handlePileClick}
+                      className={`relative select-none ${
+                        isAttemptingClaim && roomState.game.claim?.gestureType
+                          ? "cursor-default"
+                          : "cursor-pointer"
+                      }`}
+                      style={{ touchAction: "manipulation" }}
+                    >
+                      {roomState.game.topCard ? (
+                        <CardDisplay card={roomState.game.topCard} />
+                      ) : (
+                        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-8 border-4 border-gray-300 dark:border-gray-600 min-h-[280px] flex items-center justify-center">
+                          <div className="text-center text-gray-400 dark:text-gray-600">
+                            <p className="text-xl">Pila vacía</p>
+                            <p className="text-sm mt-2">Haz flip para empezar</p>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+
+                      {/* Inline gesture overlay - only shown when attempting claim with gesture */}
+                      {roomState.game.claim &&
+                        isAttemptingClaim &&
+                        roomState.game.claim.gestureType &&
+                        (() => {
+                          const claim = roomState.game.claim!;
+                          const closesAt = claim.closesAt;
+                          const myStatus =
+                            socketId && roomState.game.playerStatuses
+                              ? roomState.game.playerStatuses[socketId] || "ACTIVE"
+                              : "ACTIVE";
+                          const canParticipate = myStatus !== "OUT";
+
+                          if (!canParticipate) return null;
+
+                          // For CLICK_FRENZY, the pile itself is the clickable area
+                          if (claim.gestureType === "CLICK_FRENZY") {
+                            return (
+                              <div className="absolute inset-0 z-10 pointer-events-auto">
+                                <ClickFrenzyGesture
+                                  claimId={claim.id}
+                                  closesAt={closesAt}
+                                  requiredClicks={CLICK_FRENZY_REQUIRED_CLICKS}
+                                  minIntervalMs={CLICK_FRENZY_MIN_INTERVAL_MS}
+                                  onComplete={handleGestureComplete}
+                                />
+                              </div>
+                            );
+                          }
+
+                          // For BUBBLES and CIRCLE, show overlay around the pile
+                          return (
+                            <div className="absolute -inset-8 z-10 pointer-events-none">
+                              <div className="absolute inset-0 pointer-events-auto">
+                                {claim.gestureType === "BUBBLES" ? (
+                                  <BubblesGesture
+                                    claimId={claim.id}
+                                    closesAt={closesAt}
+                                    bubbleCount={BUBBLES_COUNT}
+                                    minDistancePx={BUBBLES_MIN_DISTANCE_PX}
+                                    bubbleSizePx={BUBBLES_SIZE_PX}
+                                    onComplete={handleGestureComplete}
+                                  />
+                                ) : claim.gestureType === "CIRCLE" ? (
+                                  <CircleGesture
+                                    claimId={claim.id}
+                                    closesAt={closesAt}
+                                    onComplete={handleGestureComplete}
+                                    minPathLen={CIRCLE_MIN_PATH_LEN}
+                                    closeDist={CIRCLE_CLOSE_DIST}
+                                    minRadius={CIRCLE_MIN_RADIUS}
+                                    maxRadiusVar={CIRCLE_MAX_RADIUS_VAR}
+                                    targetCenterTol={CIRCLE_TARGET_CENTER_TOL}
+                                    minPoints={CIRCLE_MIN_POINTS}
+                                  />
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                      {/* Gesture instruction when attempting */}
+                      {isAttemptingClaim && roomState.game.claim?.gestureType && (
+                        <div className="absolute -top-12 left-0 right-0 text-center pointer-events-none">
+                          <p className="text-sm font-semibold text-red-600 dark:text-red-400">
+                            Completa el gesto para reclamar
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Claim indicator text - outside clickable container */}
+                    {roomState.game.claim &&
+                      !isAttemptingClaim &&
+                      (() => {
+                        const claim = roomState.game.claim!;
+                        const myStatus =
+                          socketId && roomState.game.playerStatuses
+                            ? roomState.game.playerStatuses[socketId] || "ACTIVE"
+                            : "ACTIVE";
+                        const canParticipate = myStatus !== "OUT";
+                        const hasGesture = claim.gestureType && claim.gestureType !== null;
+                        const alreadyClaimed = socketId && claim.claimers.includes(socketId);
+
+                        if (!canParticipate) return null;
+                        // Don't show hint if player already claimed
+                        if (alreadyClaimed) return null;
+
+                        return (
+                          <div className="mt-2 text-center pointer-events-none">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {hasGesture
+                                ? "Toca el montón para iniciar el gesto"
+                                : "Toca el montón para reclamar"}
+                            </p>
+                          </div>
+                        );
+                      })()}
+
+                    {/* Pile count - with extra margin to avoid overlap */}
                     <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
                       <p>Pila: {roomState.game.pileCount} cartas</p>
                     </div>
+
+                    {/* Claim countdown - subtle display */}
+                    {roomState.game.claim && (
+                      <div className="mt-2 text-center">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Tiempo:{" "}
+                          {(
+                            Math.max(0, roomState.game.claim.closesAt - currentTime) / 1000
+                          ).toFixed(1)}
+                          s
+                        </p>
+                        {roomState.game.claim.claimers.length > 0 && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {roomState.game.claim.claimers.length} reclamando
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Claim Overlay */}
-                {roomState.game.claim && (() => {
-                  const claim = roomState.game.claim!;
-                  const closesAt = claim.closesAt;
-                  const timeLeft = Math.max(0, closesAt - currentTime);
-                  const timeLeftSeconds = (timeLeft / 1000).toFixed(1);
-                  const claimers = claim.claimers || [];
-                  const hasGesture = claim.gestureType && claim.gestureType !== null;
-                  
-                  // Check if current player can participate (not OUT)
-                  const myStatus =
-                    socketId && roomState.game.playerStatuses
-                      ? roomState.game.playerStatuses[socketId] || "ACTIVE"
-                      : "ACTIVE";
-                  const canParticipate = myStatus !== "OUT";
-
-                  // Handle gesture completion - auto-send claim
-                  const handleGestureComplete = () => {
-                    handleClaim();
-                  };
-
-                  return (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="fixed inset-0 bg-black/70 flex items-start justify-center z-50 pt-4"
-                    >
-                      <motion.div
-                        initial={{ scale: 0.9 }}
-                        animate={{ scale: 1 }}
-                        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4"
-                      >
-                        <h3 className="text-3xl font-bold text-center mb-2 text-red-600 dark:text-red-400">
-                          ⚡ CLAIM! ⚡
-                        </h3>
-                        <p className="text-center text-gray-600 dark:text-gray-400 mb-4">
-                          {claim.reason === "SPECIAL"
-                            ? `¡Carta ESPECIAL (${claim.specialType})!`
-                            : `¡Coincidencia con "${roomState.game.spokenWord || "taco"}"!`}
-                        </p>
-
-                        {/* Gesture component or simple claim button */}
-                        {/* Only show gestures/claim button if player can participate (not OUT) */}
-                        {canParticipate && hasGesture && claim.gestureType === "CLICK_FRENZY" ? (
-                          <ClickFrenzyGesture
-                            claimId={claim.id}
-                            closesAt={closesAt}
-                            requiredClicks={CLICK_FRENZY_REQUIRED_CLICKS}
-                            minIntervalMs={CLICK_FRENZY_MIN_INTERVAL_MS}
-                            onComplete={handleGestureComplete}
-                          />
-                        ) : canParticipate && hasGesture && claim.gestureType === "BUBBLES" ? (
-                          <BubblesGesture
-                            claimId={claim.id}
-                            closesAt={closesAt}
-                            bubbleCount={BUBBLES_COUNT}
-                            minDistancePx={BUBBLES_MIN_DISTANCE_PX}
-                            bubbleSizePx={BUBBLES_SIZE_PX}
-                            onComplete={handleGestureComplete}
-                          />
-                        ) : canParticipate && hasGesture && claim.gestureType === "CIRCLE" ? (
-                          <CircleGesture
-                            claimId={claim.id}
-                            closesAt={closesAt}
-                            onComplete={handleGestureComplete}
-                            minPathLen={CIRCLE_MIN_PATH_LEN}
-                            closeDist={CIRCLE_CLOSE_DIST}
-                            minRadius={CIRCLE_MIN_RADIUS}
-                            maxRadiusVar={CIRCLE_MAX_RADIUS_VAR}
-                            targetCenterTol={CIRCLE_TARGET_CENTER_TOL}
-                            minPoints={CIRCLE_MIN_POINTS}
-                          />
-                        ) : canParticipate ? (
-                          <>
-                            <div className="text-center mb-6">
-                              <div className="text-4xl font-bold text-red-600 dark:text-red-400">
-                                {timeLeftSeconds}s
-                              </div>
-                              <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                Tiempo restante
-                              </div>
-                            </div>
-                            <button
-                              onClick={handleClaim}
-                              className="w-full px-6 py-4 bg-red-600 hover:bg-red-700 text-white font-bold text-xl rounded-lg shadow-lg transition-colors mb-4"
-                            >
-                              🎯 CLAIM
-                            </button>
-                            <div className="text-center text-xs text-gray-500 dark:text-gray-400">
-                              Haz click rápido para ganar la pila
-                            </div>
-                          </>
-                        ) : null}
-
-                        {/* Claimers list */}
-                        {claimers.length > 0 && (
-                          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                              Claimers ({claimers.length}):
-                            </p>
-                            <div className="space-y-1">
-                              {claimers.map((claimerId: string, index: number) => {
-                                const claimer = roomState.players.find(
-                                  (p) => p.id === claimerId
-                                );
-                                return (
-                                  <div
-                                    key={claimerId}
-                                    className="text-sm text-gray-600 dark:text-gray-400"
-                                  >
-                                    {index + 1}. {claimer?.name || "Unknown"}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </motion.div>
-                    </motion.div>
-                  );
-                })()}
 
                 {/* Player Status Indicator */}
                 {socketId && roomState.game.playerStatuses && (
@@ -861,4 +938,5 @@ export default function Home() {
     </main>
   );
 }
+
 

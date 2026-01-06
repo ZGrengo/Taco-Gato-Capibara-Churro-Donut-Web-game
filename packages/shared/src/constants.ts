@@ -14,7 +14,7 @@ export const TOTAL_CARDS = 64;
 export const SPECIAL_COUNT = 9;
 export const NORMAL_COUNT = 55;
 
-export const CLAIM_WINDOW_MS = 10000; // Duration of claim window in milliseconds (10 seconds for testing)
+export const CLAIM_WINDOW_MS = 5000; // Duration of claim window in milliseconds (5 seconds)
 
 // Gesture constants
 export const CLICK_FRENZY_REQUIRED_CLICKS = 10;

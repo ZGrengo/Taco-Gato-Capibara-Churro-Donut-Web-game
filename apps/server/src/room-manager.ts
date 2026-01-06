@@ -787,7 +787,7 @@ export class RoomManager {
   /**
    * Handles a claim attempt from a player
    */
-  claimAttempt(playerId: string, claimId: string): Room | null {
+  claimAttempt(playerId: string, claimId?: string): Room | null {
     const room = this.getPlayerRoom(playerId);
     if (!room || !room.internalGame || room.phase !== "IN_GAME") {
       return null;
@@ -803,11 +803,15 @@ export class RoomManager {
 
     const now = Date.now();
 
-    // CASE C: False slap - claim outside window or wrong claimId
+    // Determine if this is a valid claim attempt
+    const hasActiveClaim = internalGame.claim && now < internalGame.claim.closesAt;
+    const claimIdMatches = hasActiveClaim && claimId && internalGame.claim?.id === claimId;
+
+    // CASE C: False slap - no active claim, or claimId provided but doesn't match, or expired
     if (
-      !internalGame.claim ||
-      internalGame.claim.id !== claimId ||
-      now >= internalGame.claim.closesAt
+      !hasActiveClaim ||
+      (claimId && !claimIdMatches) ||
+      (hasActiveClaim && internalGame.claim && now >= internalGame.claim.closesAt)
     ) {
       // Player takes entire pile if not empty
       if (internalGame.pile.length > 0) {
@@ -837,8 +841,36 @@ export class RoomManager {
 
     // Valid claim - add player to claimers if not already there
     // Only allow if player is not OUT (already checked above)
-    if (!internalGame.claim.claimers.includes(playerId)) {
+    // This handles both: claimId provided and matches, OR claimId absent but claim is active
+    if (internalGame.claim && !internalGame.claim.claimers.includes(playerId)) {
       internalGame.claim.claimers.push(playerId);
+
+      // Check if all active participants have claimed
+      const participants = room.players.filter(
+        (p) => internalGame.statuses[p.id] !== "OUT"
+      );
+      const participantIds = participants.map((p) => p.id);
+      const allClaimed = participantIds.every((id) =>
+        internalGame.claim!.claimers.includes(id)
+      );
+
+      // If all participants have claimed, resolve immediately
+      if (allClaimed && internalGame.claim) {
+        this.resolveClaim(room);
+        // Emit room state after resolving
+        if (this.io && room.code) {
+          const gameState = this.getGameState(room);
+          this.io.to(room.code).emit("ROOM_STATE", {
+            code: room.code,
+            phase: room.phase,
+            hostId: room.hostId,
+            players: room.players,
+            createdAt: room.createdAt,
+            game: gameState,
+          });
+        }
+        return room;
+      }
     }
 
     return room;
