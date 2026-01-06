@@ -13,6 +13,7 @@ import type {
   CardVisual,
   Card,
   GameState,
+  PlayerGameStatus,
 } from "./schemas";
 
 /**
@@ -35,6 +36,7 @@ export type {
   CardVisual,
   Card,
   GameState,
+  PlayerGameStatus,
 } from "./schemas";
 
 /**

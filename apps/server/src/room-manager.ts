@@ -1,4 +1,4 @@
-import type { Room, Player, Phase, Card, GameState, GestureType } from "@acme/shared";
+import type { Room, Player, Phase, Card, GameState, GestureType, PlayerGameStatus } from "@acme/shared";
 import {
   createPlayer,
   KINDS,
@@ -133,6 +133,7 @@ interface InternalGameState {
   pile: Card[]; // Central pile
   turnIndex: number;
   wordIndex: number;
+  statuses: Record<string, "ACTIVE" | "PENDING_EXIT" | "OUT">; // playerId -> status
   claim?: ClaimWindow;
 }
 
@@ -236,6 +237,8 @@ export class RoomManager {
     if (wasInGame && room.internalGame) {
       // Remove player's hand (cards are lost)
       delete room.internalGame.hands[playerId];
+      // Remove player's status
+      delete room.internalGame.statuses[playerId];
 
       // If the leaving player was before or at the current turn index, adjust
       if (playerIndex <= room.internalGame.turnIndex) {
@@ -247,6 +250,10 @@ export class RoomManager {
           room.internalGame.turnIndex = nextIndex;
         }
       }
+
+      // Update player statuses and check end game
+      this.updatePlayerStatuses(room);
+      this.checkEndGame(room);
 
       // If less than 2 players remain, end game
       if (room.players.length < 2) {
@@ -313,11 +320,18 @@ export class RoomManager {
       playerIndex = (playerIndex + 1) % room.players.length;
     }
 
+    // Initialize all players as ACTIVE
+    const statuses: Record<string, PlayerGameStatus> = {};
+    room.players.forEach((player) => {
+      statuses[player.id] = "ACTIVE";
+    });
+
     room.internalGame = {
       hands,
       pile: [],
       turnIndex: 0,
       wordIndex: 0, // Start at "taco" (index 0)
+      statuses,
     };
   }
 
@@ -339,6 +353,12 @@ export class RoomManager {
     const handCounts: Record<string, number> = {};
     room.players.forEach((player) => {
       handCounts[player.id] = internalGame.hands[player.id]?.length || 0;
+    });
+
+    // Build player statuses (public)
+    const playerStatuses: Record<string, PlayerGameStatus> = {};
+    room.players.forEach((player) => {
+      playerStatuses[player.id] = internalGame.statuses[player.id] || "ACTIVE";
     });
 
     // Get top card from pile
@@ -379,6 +399,7 @@ export class RoomManager {
       pileCount: internalGame.pile.length,
       topCard,
       handCounts,
+      playerStatuses,
       claim,
     };
   }
@@ -419,14 +440,73 @@ export class RoomManager {
   }
 
   /**
+   * Updates player statuses based on hand counts
+   */
+  private updatePlayerStatuses(room: RoomWithGame): void {
+    if (!room.internalGame) return;
+
+    room.players.forEach((player) => {
+      const handCount = room.internalGame!.hands[player.id]?.length || 0;
+      const currentStatus = room.internalGame!.statuses[player.id] || "ACTIVE";
+
+      // If OUT, stay OUT
+      if (currentStatus === "OUT") {
+        return;
+      }
+
+      // If has cards, must be ACTIVE
+      if (handCount > 0) {
+        room.internalGame!.statuses[player.id] = "ACTIVE";
+      } else {
+        // If no cards and not OUT, set to PENDING_EXIT
+        room.internalGame!.statuses[player.id] = "PENDING_EXIT";
+      }
+    });
+  }
+
+  /**
+   * Checks if game should end and sets phase to ENDED if needed
+   */
+  private checkEndGame(room: RoomWithGame): void {
+    if (!room.internalGame || room.phase !== "IN_GAME") return;
+
+    // Get participants (players who are not OUT)
+    const participants = room.players.filter(
+      (p) => room.internalGame!.statuses[p.id] !== "OUT"
+    );
+
+    // Count participants with cards
+    const aliveWithCards = participants.filter(
+      (p) => (room.internalGame!.hands[p.id]?.length || 0) > 0
+    );
+
+    if (aliveWithCards.length <= 1) {
+      room.phase = "ENDED";
+      // Clear any active claim
+      if (room.internalGame.claim?.timeoutId) {
+        clearTimeout(room.internalGame.claim.timeoutId);
+      }
+      room.internalGame.claim = undefined;
+      // Note: winnerId could be added to RoomState if needed
+    }
+  }
+
+  /**
    * Resolves and closes the claim window
    */
   private resolveClaim(room: RoomWithGame): void {
     if (!room.internalGame?.claim) return;
 
     const claim = room.internalGame.claim;
-    const allPlayerIds = room.players.map((p) => p.id);
-    const nonClaimers = allPlayerIds.filter(
+    
+    // Get participants (players who are not OUT)
+    const participants = room.players.filter(
+      (p) => room.internalGame!.statuses[p.id] !== "OUT"
+    );
+    const participantIds = participants.map((p) => p.id);
+    
+    // Calculate non-claimers only among participants
+    const nonClaimers = participantIds.filter(
       (playerId) => !claim.claimers.includes(playerId)
     );
 
@@ -462,6 +542,26 @@ export class RoomManager {
       room.internalGame.pile = [];
     }
 
+    // Update player statuses after distributing cards
+    this.updatePlayerStatuses(room);
+
+    // Handle PENDING_EXIT -> OUT transition
+    // Players in PENDING_EXIT who claimed and still have 0 cards become OUT
+    const pendingExitPlayers = room.players.filter(
+      (p) => room.internalGame!.statuses[p.id] === "PENDING_EXIT"
+    );
+
+    for (const player of pendingExitPlayers) {
+      const handCount = room.internalGame!.hands[player.id]?.length || 0;
+      const claimedInThisWindow = claim.claimers.includes(player.id);
+
+      // If they claimed and still have 0 cards, they exit (become OUT)
+      if (claimedInThisWindow && handCount === 0) {
+        room.internalGame!.statuses[player.id] = "OUT";
+      }
+      // If they received cards, status was already updated to ACTIVE by updatePlayerStatuses
+    }
+
     // Clear claim
     room.internalGame.claim = undefined;
 
@@ -475,17 +575,20 @@ export class RoomManager {
         (claim.triggerTurnIndex + 1) % room.players.length
       );
       if (nextIndex === null) {
-        // No players with cards, end game
-        room.phase = "ENDED";
-        room.internalGame = undefined;
+        // Check end game condition
+        this.checkEndGame(room);
       } else {
         room.internalGame.turnIndex = nextIndex;
       }
     }
+
+    // Check end game after claim resolution
+    this.checkEndGame(room);
   }
 
   /**
    * Finds next player with cards
+   * Only considers ACTIVE players (not PENDING_EXIT or OUT)
    */
   private findNextPlayerWithCards(
     room: RoomWithGame,
@@ -497,6 +600,11 @@ export class RoomManager {
     for (let i = 0; i < room.players.length; i++) {
       const index = (startIndex + i) % room.players.length;
       const player = room.players[index];
+      const status = internalGame.statuses[player.id] || "ACTIVE";
+      // Only consider ACTIVE players (skip OUT and PENDING_EXIT)
+      if (status !== "ACTIVE") {
+        continue;
+      }
       const hand = internalGame.hands[player.id];
       if (hand && hand.length > 0) {
         return index;
@@ -589,6 +697,12 @@ export class RoomManager {
       return null;
     }
 
+    // Check if player is OUT or PENDING_EXIT (cannot flip)
+    const playerStatus = internalGame.statuses[playerId] || "ACTIVE";
+    if (playerStatus === "OUT" || playerStatus === "PENDING_EXIT") {
+      return null;
+    }
+
     // Validate it's the player's turn
     const currentPlayer = room.players[internalGame.turnIndex];
     if (!currentPlayer || currentPlayer.id !== playerId) {
@@ -650,6 +764,9 @@ export class RoomManager {
       internalGame.wordIndex = internalGame.pile.length % KINDS.length;
     }
 
+    // Update player statuses based on hand counts
+    this.updatePlayerStatuses(room);
+
     // Advance turn index to next player with cards (if no claim opened)
     if (!internalGame.claim) {
       const nextIndex = this.findNextPlayerWithCards(
@@ -657,9 +774,8 @@ export class RoomManager {
         (internalGame.turnIndex + 1) % room.players.length
       );
       if (nextIndex === null) {
-        // No players with cards, end game
-        room.phase = "ENDED";
-        room.internalGame = undefined;
+        // Check end game condition
+        this.checkEndGame(room);
         return room;
       }
       internalGame.turnIndex = nextIndex;
@@ -678,6 +794,13 @@ export class RoomManager {
     }
 
     const { internalGame } = room;
+    const currentPlayerStatus = internalGame.statuses[playerId] || "ACTIVE";
+
+    // OUT players cannot claim
+    if (currentPlayerStatus === "OUT") {
+      return null;
+    }
+
     const now = Date.now();
 
     // CASE C: False slap - claim outside window or wrong claimId
@@ -695,6 +818,9 @@ export class RoomManager {
         internalGame.pile = [];
       }
 
+      // Update statuses after false slap
+      this.updatePlayerStatuses(room);
+
       // Clear claim if exists
       if (internalGame.claim) {
         if (internalGame.claim.timeoutId) {
@@ -703,10 +829,14 @@ export class RoomManager {
         internalGame.claim = undefined;
       }
 
+      // Check end game
+      this.checkEndGame(room);
+
       return room;
     }
 
     // Valid claim - add player to claimers if not already there
+    // Only allow if player is not OUT (already checked above)
     if (!internalGame.claim.claimers.includes(playerId)) {
       internalGame.claim.claimers.push(playerId);
     }

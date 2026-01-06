@@ -43,17 +43,54 @@ function CardDisplay({ card }: { card: Card }) {
   const [imageError, setImageError] = useState(false);
 
   if (card.type === "SPECIAL" && card.visual.kind === "special") {
+    // Map SPECIAL_1 -> special_1.png, SPECIAL_2 -> special_2.png, etc.
+    const specialTypeToFileName: Record<"SPECIAL_1" | "SPECIAL_2" | "SPECIAL_3", string> = {
+      SPECIAL_1: "special_1",
+      SPECIAL_2: "special_2",
+      SPECIAL_3: "special_3",
+    };
+    // Map SPECIAL_1 -> "Frenzy click", SPECIAL_2 -> "¡Bubbles!", SPECIAL_3 -> "Circles"
+    const specialTypeToDisplayName: Record<"SPECIAL_1" | "SPECIAL_2" | "SPECIAL_3", string> = {
+      SPECIAL_1: "Frenzy click",
+      SPECIAL_2: "¡Bubbles!",
+      SPECIAL_3: "Circles",
+    };
+    const fileName = specialTypeToFileName[card.visual.specialType];
+    const displayName = specialTypeToDisplayName[card.visual.specialType];
+    const imagePath = `/assets/specials/${fileName}.png`;
+
     return (
       <motion.div
         key={card.id}
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.3 }}
-        className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4`}
+        className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
       >
-        <div className="text-center">
-          <p className="text-2xl font-bold text-white mb-2">SPECIAL</p>
-          <p className="text-lg text-white/90">{card.visual.specialType}</p>
+        {!imageError && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <img
+              src={imagePath}
+              alt={`Special card ${displayName}`}
+              className="object-contain w-full h-full"
+              onError={() => setImageError(true)}
+            />
+          </div>
+        )}
+        {/* Fallback text if image fails to load */}
+        {imageError && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white mb-2">SPECIAL</p>
+              <p className="text-lg text-white/90">{displayName}</p>
+            </div>
+          </div>
+        )}
+        {/* Card label */}
+        <div className="absolute bottom-2 left-0 right-0 text-center">
+          <p className="text-sm font-semibold text-white/90 uppercase drop-shadow">
+            {displayName}
+          </p>
         </div>
       </motion.div>
     );
@@ -61,7 +98,7 @@ function CardDisplay({ card }: { card: Card }) {
 
   // NORMAL card - visual.kind must be one of the normal kinds
   if (card.visual.kind !== "special") {
-    const imagePath = `/assets/cards/${card.visual.kind}/variants/${card.visual.style}.png`;
+    const imagePath = `/assets/${card.visual.kind}/${card.visual.style}.png`;
 
     return (
       <motion.div
@@ -533,6 +570,13 @@ export default function Home() {
                   const timeLeftSeconds = (timeLeft / 1000).toFixed(1);
                   const claimers = claim.claimers || [];
                   const hasGesture = claim.gestureType && claim.gestureType !== null;
+                  
+                  // Check if current player can participate (not OUT)
+                  const myStatus =
+                    socketId && roomState.game.playerStatuses
+                      ? roomState.game.playerStatuses[socketId] || "ACTIVE"
+                      : "ACTIVE";
+                  const canParticipate = myStatus !== "OUT";
 
                   // Handle gesture completion - auto-send claim
                   const handleGestureComplete = () => {
@@ -560,7 +604,8 @@ export default function Home() {
                         </p>
 
                         {/* Gesture component or simple claim button */}
-                        {hasGesture && claim.gestureType === "CLICK_FRENZY" ? (
+                        {/* Only show gestures/claim button if player can participate (not OUT) */}
+                        {canParticipate && hasGesture && claim.gestureType === "CLICK_FRENZY" ? (
                           <ClickFrenzyGesture
                             claimId={claim.id}
                             closesAt={closesAt}
@@ -568,7 +613,7 @@ export default function Home() {
                             minIntervalMs={CLICK_FRENZY_MIN_INTERVAL_MS}
                             onComplete={handleGestureComplete}
                           />
-                        ) : hasGesture && claim.gestureType === "BUBBLES" ? (
+                        ) : canParticipate && hasGesture && claim.gestureType === "BUBBLES" ? (
                           <BubblesGesture
                             claimId={claim.id}
                             closesAt={closesAt}
@@ -577,7 +622,7 @@ export default function Home() {
                             bubbleSizePx={BUBBLES_SIZE_PX}
                             onComplete={handleGestureComplete}
                           />
-                        ) : hasGesture && claim.gestureType === "CIRCLE" ? (
+                        ) : canParticipate && hasGesture && claim.gestureType === "CIRCLE" ? (
                           <CircleGesture
                             claimId={claim.id}
                             closesAt={closesAt}
@@ -589,7 +634,7 @@ export default function Home() {
                             targetCenterTol={CIRCLE_TARGET_CENTER_TOL}
                             minPoints={CIRCLE_MIN_POINTS}
                           />
-                        ) : (
+                        ) : canParticipate ? (
                           <>
                             <div className="text-center mb-6">
                               <div className="text-4xl font-bold text-red-600 dark:text-red-400">
@@ -609,7 +654,7 @@ export default function Home() {
                               Haz click rápido para ganar la pila
                             </div>
                           </>
-                        )}
+                        ) : null}
 
                         {/* Claimers list */}
                         {claimers.length > 0 && (
@@ -639,29 +684,86 @@ export default function Home() {
                   );
                 })()}
 
+                {/* Player Status Indicator */}
+                {socketId && roomState.game.playerStatuses && (
+                  <div className="mb-4">
+                    {(() => {
+                      const myStatus = roomState.game.playerStatuses[socketId] || "ACTIVE";
+                      const myHandCount = roomState.game.handCounts[socketId] || 0;
+                      
+                      if (myStatus === "PENDING_EXIT") {
+                        return (
+                          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                            <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 text-center">
+                              ⏳ Esperando claim final para salir
+                            </p>
+                          </div>
+                        );
+                      }
+                      
+                      if (myStatus === "OUT") {
+                        return (
+                          <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 text-center">
+                              👁️ Espectador
+                            </p>
+                          </div>
+                        );
+                      }
+                      
+                      return null;
+                    })()}
+                  </div>
+                )}
+
                 {/* Flip Button */}
                 <div className="mb-6">
                   <button
                     onClick={handleFlipCard}
                     disabled={
                       !socketId ||
-                      roomState.game.turnPlayerId !== socketId ||
                       !socket ||
-                      !!roomState.game.claim
+                      !!roomState.game.claim ||
+                      (() => {
+                        if (!socketId || !roomState.game.playerStatuses || !roomState.game.handCounts) return true;
+                        const myStatus = roomState.game.playerStatuses[socketId] || "ACTIVE";
+                        const myHandCount = roomState.game.handCounts[socketId] || 0;
+                        return myStatus === "OUT" || myStatus === "PENDING_EXIT" || myHandCount === 0 || roomState.game.turnPlayerId !== socketId;
+                      })()
                     }
                     className={`w-full px-6 py-4 rounded-lg font-bold text-lg transition-all ${
-                      socketId &&
-                      roomState.game.turnPlayerId === socketId &&
-                      !roomState.game.claim
-                        ? "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
-                        : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                      !socketId ||
+                      !socket ||
+                      !!roomState.game.claim ||
+                      (() => {
+                        if (!socketId || !roomState.game.playerStatuses || !roomState.game.handCounts) return true;
+                        const myStatus = roomState.game.playerStatuses[socketId] || "ACTIVE";
+                        const myHandCount = roomState.game.handCounts[socketId] || 0;
+                        return myStatus === "OUT" || myStatus === "PENDING_EXIT" || myHandCount === 0 || roomState.game.turnPlayerId !== socketId;
+                      })()
+                        ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                        : "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
                     }`}
                   >
-                    {roomState.game.claim
-                      ? "Esperando resolución de claim..."
-                      : socketId && roomState.game.turnPlayerId === socketId
-                        ? "🃏 Flip Card"
-                        : "Esperando tu turno..."}
+                    {(() => {
+                      if (!socketId || !socket) return "Conectando...";
+                      if (!!roomState.game.claim) return "Esperando resolución de claim...";
+                      
+                      if (socketId && roomState.game.playerStatuses && roomState.game.handCounts) {
+                        const myStatus = roomState.game.playerStatuses[socketId] || "ACTIVE";
+                        const myHandCount = roomState.game.handCounts[socketId] || 0;
+                        
+                        if (myStatus === "OUT" || myStatus === "PENDING_EXIT" || myHandCount === 0) {
+                          return "🎉 ¡Ganaste!";
+                        }
+                      }
+                      
+                      if (socketId && roomState.game.turnPlayerId === socketId) {
+                        return "🃏 Flip Card";
+                      }
+                      
+                      return "Esperando tu turno...";
+                    })()}
                   </button>
                 </div>
 
@@ -676,6 +778,7 @@ export default function Home() {
                       const isCurrentTurn =
                         player.id === roomState.game?.turnPlayerId;
                       const handCount = roomState.game?.handCounts[player.id] || 0;
+                      const playerStatus = roomState.game?.playerStatuses[player.id] || "ACTIVE";
                       return (
                         <motion.div
                           key={player.id}
@@ -705,6 +808,22 @@ export default function Home() {
                                 title="Current Turn"
                               >
                                 ⏱️ Turno
+                              </span>
+                            )}
+                            {playerStatus === "PENDING_EXIT" && (
+                              <span
+                                className="text-xs px-2 py-0.5 bg-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-full font-medium"
+                                title="Esperando claim final para salir"
+                              >
+                                ⏳ Esperando claim final para salir
+                              </span>
+                            )}
+                            {playerStatus === "OUT" && (
+                              <span
+                                className="text-xs px-2 py-0.5 bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-300 rounded-full font-medium"
+                                title="Espectador"
+                              >
+                                👁️ Espectador
                               </span>
                             )}
                           </div>

@@ -44,6 +44,10 @@ export const PlayerSchema = z.object({
   ready: z.boolean(),
 });
 
+// Player game status (during IN_GAME phase)
+export const PlayerGameStatusSchema = z.enum(["ACTIVE", "PENDING_EXIT", "OUT"]);
+export type PlayerGameStatus = z.infer<typeof PlayerGameStatusSchema>;
+
 // Word type schema (for validation) - using KINDS
 export const KindSchema = z.enum(["taco", "gato", "capibara", "churro", "donut"]);
 // Legacy alias
@@ -104,6 +108,7 @@ export const GameStateSchema = z.object({
   pileCount: z.number(),
   topCard: CardSchema.optional(),
   handCounts: z.record(z.string(), z.number()), // Record<playerId, count>
+  playerStatuses: z.record(z.string(), PlayerGameStatusSchema), // Record<playerId, status>
   claim: ClaimWindowPublicSchema.optional(),
 });
 
