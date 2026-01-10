@@ -275,6 +275,17 @@ export default function Home() {
     socket.emit(EVENTS.FLIP_REQUEST, {});
   };
 
+  // Handler for disabled deck click feedback
+  const handleDisabledDeckClick = useCallback((reason: string) => {
+    const toastKey = Date.now();
+    setDisabledToast({ message: reason, key: toastKey });
+    
+    // Clear toast after 800ms
+    setTimeout(() => {
+      setDisabledToast((prev) => prev?.key === toastKey ? null : prev);
+    }, 800);
+  }, []);
+
   const handleClaim = (claimId?: string) => {
     if (!socket || !roomState) return;
     // Send CLAIM_ATTEMPT with optional claimId
@@ -399,6 +410,12 @@ export default function Home() {
   const [screenShakeKey, setScreenShakeKey] = useState(0); // Key for screen shake animation
   const gestureAttemptStartedAtRef = useRef<number | null>(null); // When gesture attempt started (for detecting expired/failed gestures)
   const gestureClaimIdRef = useRef<string | null>(null); // Claim ID we're attempting (to detect if it expired/failed)
+  
+  // Toast state for disabled deck feedback
+  const [disabledToast, setDisabledToast] = useState<{ message: string; key: number } | null>(null);
+  
+  // Track number of flips the local player has made (for hiding hint bubble after 5 turns)
+  const myFlipCountRef = useRef<number>(0);
   
   // Refs for tracking previous counts to detect penalties
   const prevPileCountRef = useRef<number>(0);
@@ -558,6 +575,11 @@ export default function Home() {
       // Determine who flipped
       const flipPlayerId = game.lastFlipPlayerId;
       
+      // Track my flips for hiding hint bubble after 5 turns
+      if (flipPlayerId === socketId) {
+        myFlipCountRef.current += 1;
+      }
+      
       if (flipPlayerId) {
         // Get source rect (deck if it's me, player row if it's someone else)
         let fromRect: { x: number; y: number } | null = null;
@@ -598,7 +620,18 @@ export default function Home() {
       topCardId: currentTopCardId,
       pileCount: currentPileCount,
     };
-  }, [roomState?.game, socketId]);
+  }, [roomState?.game, socketId, triggerImpact, flyingCards.length]);
+
+  // Reset flip count when game starts or pile is empty (new game)
+  useEffect(() => {
+    if (roomState?.phase === "IN_GAME" && roomState?.game) {
+      // Reset count when pile becomes empty (new game or game restarted)
+      const prevPileCount = prevGameStateRef.current.pileCount;
+      if (roomState.game.pileCount === 0 && prevPileCount > 0) {
+        myFlipCountRef.current = 0;
+      }
+    }
+  }, [roomState?.phase, roomState?.game]);
 
   // Check if current player is host
   const isHost = roomState && socketId && roomState.hostId === socketId;
@@ -933,16 +966,76 @@ export default function Home() {
                 </div>
 
                 {/* Deck Stack - My Deck */}
-                {socketId && roomState.game.handCounts && (
-                  <div className="mb-6 flex justify-center">
-                    <DeckStack
-                      ref={deckRef}
-                      count={roomState.game.handCounts[socketId] || 0}
-                      backSrc="/assets/card-back.png"
-                      isMyTurn={roomState.game.turnPlayerId === socketId}
-                    />
-                  </div>
-                )}
+                {socketId && roomState.game.handCounts && (() => {
+                  const myHandCount = roomState.game.handCounts[socketId] || 0;
+                  const isMyTurn = roomState.game.turnPlayerId === socketId;
+                  const claimActive = !!roomState.game.claim;
+                  const myStatus = roomState.game.playerStatuses?.[socketId] || "ACTIVE";
+                  const myStatusAllowsPlay = myStatus === "ACTIVE";
+                  
+                  // Calculate if flip is allowed
+                  const canFlip = isMyTurn && !claimActive && myHandCount > 0 && myStatusAllowsPlay;
+                  
+                  // Determine disabled reason
+                  let disabledReason: string | undefined;
+                  if (!canFlip) {
+                    if (myHandCount === 0) {
+                      disabledReason = "No tienes cartas";
+                    } else if (claimActive) {
+                      disabledReason = "Hay un claim en curso";
+                    } else if (!isMyTurn) {
+                      disabledReason = "No es tu turno";
+                    } else if (!myStatusAllowsPlay) {
+                      disabledReason = "No puedes jugar";
+                    }
+                  }
+
+                  // Determine help text
+                  // Show hint bubble only if less than 5 flips made
+                  let helpText: string | null = null;
+                  if (myFlipCountRef.current < 5) {
+                    if (isMyTurn && canFlip) {
+                      helpText = "¡Tócame para jugar tu próxima carta!";
+                    } else if (!isMyTurn) {
+                      helpText = "Esperando...";
+                    }
+                    // Don't show if claim active or no cards (handled by disabled state)
+                  }
+                  
+                  return (
+                    <div className="mb-6 flex justify-center relative">
+                      <DeckStack
+                        ref={deckRef}
+                        count={myHandCount}
+                        backSrc="/assets/card-back.png"
+                        isMyTurn={isMyTurn}
+                        enabled={canFlip}
+                        disabledReason={disabledReason}
+                        onFlip={handleFlipCard}
+                        onDisabledClick={handleDisabledDeckClick}
+                        helpText={helpText}
+                      />
+                      
+                      {/* Disabled toast */}
+                      <AnimatePresence>
+                        {disabledToast && (
+                          <motion.div
+                            key={disabledToast.key}
+                            className="absolute -top-12 left-1/2 transform -translate-x-1/2 pointer-events-none z-50"
+                            initial={{ opacity: 0, y: 4, scale: 0.9 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -8, scale: 0.9 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <div className="bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 px-4 py-2 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap">
+                              {disabledToast.message}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })()}
 
                 {/* Pile Display - Clickable */}
                 <div className="mb-6 flex flex-col items-center">
@@ -1133,72 +1226,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Flip Button */}
-                <div className="mb-6">
-                  {(() => {
-                    const isMyTurn = socketId && roomState.game.turnPlayerId === socketId;
-                    const isDisabled =
-                      !socketId ||
-                      !socket ||
-                      !!roomState.game.claim ||
-                      (() => {
-                        if (!socketId || !roomState.game.playerStatuses || !roomState.game.handCounts) return true;
-                        const myStatus = roomState.game.playerStatuses[socketId] || "ACTIVE";
-                        const myHandCount = roomState.game.handCounts[socketId] || 0;
-                        return myStatus === "OUT" || myStatus === "PENDING_EXIT" || myHandCount === 0 || roomState.game.turnPlayerId !== socketId;
-                      })();
-                    
-                    return (
-                      <motion.button
-                        onClick={handleFlipCard}
-                        disabled={isDisabled}
-                        animate={
-                          !isDisabled && isMyTurn && !shouldReduceMotion
-                            ? {
-                                scale: [1, 1.02, 1],
-                              }
-                            : {}
-                        }
-                        transition={
-                          !isDisabled && isMyTurn && !shouldReduceMotion
-                            ? {
-                                scale: {
-                                  duration: 1.2,
-                                  repeat: Infinity,
-                                  ease: "easeInOut",
-                                },
-                              }
-                            : {}
-                        }
-                        className={`w-full px-6 py-4 rounded-lg font-bold text-lg transition-all ${
-                          isDisabled
-                            ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                            : "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
-                        }`}
-                      >
-                    {(() => {
-                      if (!socketId || !socket) return "Conectando...";
-                      if (!!roomState.game.claim) return "Esperando resolución de claim...";
-                      
-                      if (socketId && roomState.game.playerStatuses && roomState.game.handCounts) {
-                        const myStatus = roomState.game.playerStatuses[socketId] || "ACTIVE";
-                        const myHandCount = roomState.game.handCounts[socketId] || 0;
-                        
-                        if (myStatus === "OUT" || myStatus === "PENDING_EXIT" || myHandCount === 0) {
-                          return "🎉 ¡Ganaste!";
-                        }
-                      }
-                      
-                      if (socketId && roomState.game.turnPlayerId === socketId) {
-                        return "🃏 Flip Card";
-                      }
-                      
-                      return "Esperando tu turno...";
-                    })()}
-                      </motion.button>
-                    );
-                  })()}
-                </div>
 
                 {/* Players List */}
                 <div className="mb-4">
