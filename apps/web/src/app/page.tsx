@@ -30,6 +30,7 @@ import { DeckStack } from "../components/DeckStack";
 import { PileCenter } from "../components/PileCenter";
 import { FlyingCardLayer } from "../components/FlyingCardLayer";
 import { ClickablePileArea } from "../components/ClickablePileArea";
+import { WordTimeline } from "../components/WordTimeline";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
@@ -411,6 +412,10 @@ export default function Home() {
   const gestureAttemptStartedAtRef = useRef<number | null>(null); // When gesture attempt started (for detecting expired/failed gestures)
   const gestureClaimIdRef = useRef<string | null>(null); // Claim ID we're attempting (to detect if it expired/failed)
   
+  // Success notification states (for successful claim without receiving cards)
+  const [goodKey, setGoodKey] = useState(0);
+  const prevClaimActiveRef = useRef<boolean>(false); // Track if claim was active to detect resolution
+  
   // Toast state for disabled deck feedback
   const [disabledToast, setDisabledToast] = useState<{ message: string; key: number } | null>(null);
   
@@ -420,10 +425,21 @@ export default function Home() {
   // Refs for tracking previous counts to detect penalties
   const prevPileCountRef = useRef<number>(0);
   const prevMyHandCountRef = useRef<number>(0);
-  
+
+  // Track previous claim ID to detect when claim opens (for micro-anticipation)
+  const prevClaimIdRef = useRef<string | null>(null);
+
+  // Anticipation key for triggering micro-anticipation animation when claim opens
+  const [anticipationKey, setAnticipationKey] = useState(0);
+
   // Trigger impact animation (bounce + ripple)
   const triggerImpact = useCallback(() => {
     setImpactKey((prev) => prev + 1);
+  }, []);
+
+  // Trigger anticipation animation when claim opens
+  const triggerAnticipation = useCallback(() => {
+    setAnticipationKey((prev) => prev + 1);
   }, []);
 
   // Handle impact callback (triggered by FlyingCardLayer when card lands)
@@ -459,7 +475,7 @@ export default function Home() {
     }
   }, [roomState?.game, triggerImpact, flyingCards.length]);
 
-  // Detect false slap (penalty) - when player receives cards after clicking pile or failing gesture
+  // Detect false slap (penalty) and successful claim - combined logic to ensure mutual exclusivity
   useEffect(() => {
     if (!roomState?.game || !socketId) {
       // Update refs even if game is not available
@@ -467,6 +483,7 @@ export default function Home() {
         const game = roomState.game;
         prevMyHandCountRef.current = game.handCounts[socketId] ?? 0;
         prevPileCountRef.current = game.pileCount;
+        prevClaimActiveRef.current = !!game.claim;
       }
       return;
     }
@@ -474,14 +491,20 @@ export default function Home() {
     const game = roomState.game;
     const myHandCount = game.handCounts[socketId] ?? 0;
     const pileCount = game.pileCount;
+    const claimActive = !!game.claim;
+    const wasClaimActive = prevClaimActiveRef.current;
 
-    // Check for penalty condition: hand count increased AND pile count decreased
+    // Check for penalty condition FIRST: hand count increased AND pile count decreased
     const handCountIncreased = myHandCount > prevMyHandCountRef.current;
     const pileCountDecreased = pileCount < prevPileCountRef.current;
+    
+    let shouldShowOops = false;
+    let shouldShowGood = false;
 
+    // PRIORITY 1: Check for penalty (Oops!)
+    // Only show Oops if handCount INCREASED (player received cards)
     if (handCountIncreased && pileCountDecreased) {
       // Penalty detected! Check if it's from a slap intent or a failed gesture attempt
-      let shouldShowOops = false;
       let cardCount = prevPileCountRef.current;
 
       // Case 1: Direct slap intent (click on pile without gesture, or false slap)
@@ -491,8 +514,6 @@ export default function Home() {
         if (timeSinceSlap < CLAIM_WINDOW_MS) {
           shouldShowOops = true;
           cardCount = slapPileSnapshotRef.current ?? prevPileCountRef.current;
-          setSlapIntentAt(null); // Consume the intent
-          slapPileSnapshotRef.current = null; // Reset snapshot
         }
       }
 
@@ -512,47 +533,104 @@ export default function Home() {
           shouldShowOops = true;
           // Use snapshot from when gesture started (captured at click), or fallback to previous pile count
           cardCount = slapPileSnapshotRef.current ?? prevPileCountRef.current;
-
-          // Reset gesture tracking
-          gestureAttemptStartedAtRef.current = null;
-          gestureClaimIdRef.current = null;
-          setIsAttemptingClaim(false);
         }
       }
+    }
+    
+    // PRIORITY 2: Only check for success (¡Bien!) if NO penalty was detected AND handCount did NOT increase
+    // Detect successful claim: claim was resolved (disappeared) and player didn't receive cards
+    if (!shouldShowOops && !handCountIncreased) {
+      const claimResolved = wasClaimActive && !claimActive; // Claim was active, now it's gone
+      const handCountDidNotIncrease = myHandCount <= prevMyHandCountRef.current; // Player didn't receive cards
+      const hadClaimIntent = slapIntentAt !== null || gestureAttemptStartedAtRef.current !== null; // Player was attempting claim
 
-      if (shouldShowOops) {
-        // Trigger animations and set card count for display
-        setOopsCardCount(cardCount);
-        setOopsKey((prev) => prev + 1);
-        setShakeKey((prev) => prev + 1);
-        setScreenShakeKey((prev) => prev + 1);
+      // Check if it's a successful claim (within reasonable time window)
+      if (claimResolved && handCountDidNotIncrease && hadClaimIntent) {
+        // Check if claim intent was recent (within 2500ms to account for claim resolution time)
+        const timeSinceSlap = slapIntentAt !== null ? Date.now() - slapIntentAt : null;
+        const timeSinceGesture = gestureAttemptStartedAtRef.current !== null ? Date.now() - gestureAttemptStartedAtRef.current : null;
         
-        // Play sound effect (placeholder)
-        playSfx('oops');
-        
-        // Hide "Oops!" toast after ~900ms (display time + exit animation)
-        setTimeout(() => {
-          setOopsKey(0);
-          setOopsCardCount(0);
-          // Reset screen shake after animation completes
-          setScreenShakeKey(0);
-        }, 900);
+        const recentIntent = 
+          (timeSinceSlap !== null && timeSinceSlap < 2500) ||
+          (timeSinceGesture !== null && timeSinceGesture < 2500);
+
+        if (recentIntent) {
+          shouldShowGood = true;
+        }
+      }
+    }
+
+    // Now trigger notifications and consume intents
+    if (shouldShowOops) {
+      // Trigger animations and set card count for display
+      const cardCount = slapPileSnapshotRef.current ?? prevPileCountRef.current;
+      setOopsCardCount(cardCount);
+      setOopsKey((prev) => prev + 1);
+      setShakeKey((prev) => prev + 1);
+      setScreenShakeKey((prev) => prev + 1);
+      
+      // Play sound effect (placeholder)
+      playSfx('oops');
+      
+      // Hide "Oops!" toast after ~900ms (display time + exit animation)
+      setTimeout(() => {
+        setOopsKey(0);
+        setOopsCardCount(0);
+        // Reset screen shake after animation completes
+        setScreenShakeKey(0);
+      }, 900);
+      
+      // Consume intent - IMPORTANT: consume after showing Oops to prevent showing Good
+      if (slapIntentAt !== null) {
+        setSlapIntentAt(null);
+        slapPileSnapshotRef.current = null;
+      }
+      if (gestureAttemptStartedAtRef.current !== null) {
+        gestureAttemptStartedAtRef.current = null;
+        gestureClaimIdRef.current = null;
+        setIsAttemptingClaim(false);
+      }
+    } else if (shouldShowGood) {
+      // Success! Player claimed successfully without receiving cards
+      setGoodKey((prev) => prev + 1);
+      
+      // Play sound effect (placeholder)
+      playSfx('pop');
+      
+      // Hide "¡Bien!" toast after ~900ms (display time + exit animation)
+      setTimeout(() => {
+        setGoodKey(0);
+      }, 900);
+      
+      // Consume intent
+      if (slapIntentAt !== null) {
+        setSlapIntentAt(null);
+        slapPileSnapshotRef.current = null;
+      }
+      if (gestureAttemptStartedAtRef.current !== null) {
+        gestureAttemptStartedAtRef.current = null;
+        gestureClaimIdRef.current = null;
+        setIsAttemptingClaim(false);
       }
     }
 
     // Update refs for next comparison
+    // Always update claim active state
+    prevClaimActiveRef.current = claimActive;
+    
+    // Update hand/pile counts for next comparison cycle
     prevMyHandCountRef.current = myHandCount;
     prevPileCountRef.current = pileCount;
   }, [roomState?.game, socketId, slapIntentAt, isAttemptingClaim]);
 
-  // Clear slap intent after 1500ms if not consumed
+  // Clear slap intent after 2000ms if not consumed (increased to account for claim resolution time)
   useEffect(() => {
     if (slapIntentAt === null) return;
 
     const timer = setTimeout(() => {
       setSlapIntentAt(null);
       slapPileSnapshotRef.current = null; // Reset snapshot if intent expires
-    }, 1500);
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, [slapIntentAt]);
@@ -632,6 +710,24 @@ export default function Home() {
       }
     }
   }, [roomState?.phase, roomState?.game]);
+
+  // Detect claim opened for micro-anticipation animation
+  useEffect(() => {
+    if (!roomState?.game) {
+      prevClaimIdRef.current = null;
+      return;
+    }
+
+    const claimId = roomState.game.claim?.id ?? null;
+    
+    // If claim appears (new claim opened)
+    if (claimId && claimId !== prevClaimIdRef.current) {
+      triggerAnticipation();
+    }
+    
+    // Update ref for next comparison
+    prevClaimIdRef.current = claimId;
+  }, [roomState?.game, triggerAnticipation]);
 
   // Check if current player is host
   const isHost = roomState && socketId && roomState.hostId === socketId;
@@ -932,8 +1028,25 @@ export default function Home() {
                       y: { duration: 0.3 },
                     }
               }
-              className="mt-6"
+              className="mt-6 relative"
             >
+              {/* Dim overlay for claim anticipation (optional) */}
+              <AnimatePresence>
+                {anticipationKey > 0 && !shouldReduceMotion && (
+                  <motion.div
+                    key={`anticipation-dim-${anticipationKey}`}
+                    className="absolute inset-0 bg-black pointer-events-none z-40"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: [0, 0.12, 0.12, 0] }}
+                    exit={{ opacity: 0 }}
+                    transition={{ 
+                      times: [0, 0.3, 0.7, 1], // 0ms, 75ms (fade in), 175ms (hold), 250ms (fade out)
+                      duration: 0.25, 
+                      ease: "easeOut" 
+                    }}
+                  />
+                )}
+              </AnimatePresence>
               <div className="mb-6">
                 <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
                   🎮 Game In Progress
@@ -949,21 +1062,14 @@ export default function Home() {
                       )?.name
                     }
                   </p>
-                  <p className="text-md text-indigo-700 dark:text-indigo-300">
-                    Palabra actual:{" "}
-                    <span className="font-bold uppercase">
-                      {roomState.game.spokenWord || "—"}
-                    </span>
-                  </p>
-                  {roomState.game.pileCount > 0 && (
-                    <p className="text-sm text-indigo-600 dark:text-indigo-400">
-                      Siguiente:{" "}
-                      <span className="font-semibold uppercase">
-                        {roomState.game.currentWord}
-                      </span>
-                    </p>
-                  )}
                 </div>
+
+                {/* Word Timeline - Sequence visualization */}
+                <WordTimeline
+                  spokenWord={roomState.game.spokenWord}
+                  currentWord={roomState.game.currentWord}
+                  anticipationKey={anticipationKey}
+                />
 
                 {/* Deck Stack - My Deck */}
                 {socketId && roomState.game.handCounts && (() => {
@@ -1048,6 +1154,8 @@ export default function Home() {
                     shakeKey={shakeKey}
                     oopsKey={oopsKey}
                     oopsCardCount={oopsCardCount}
+                    goodKey={goodKey}
+                    anticipationKey={anticipationKey}
                   >
                     <ClickablePileArea
                       onClick={handlePileClick}
@@ -1135,61 +1243,8 @@ export default function Home() {
                           );
                         })()}
 
-                      {/* Gesture instruction when attempting */}
-                      {isAttemptingClaim && roomState.game.claim?.gestureType && (
-                        <div className="absolute -top-12 left-0 right-0 text-center pointer-events-none">
-                          <p className="text-sm font-semibold text-red-600 dark:text-red-400">
-                            Completa el gesto para reclamar
-                          </p>
-                        </div>
-                      )}
                     </ClickablePileArea>
 
-                    {/* Claim indicator text - outside clickable container */}
-                    {roomState.game.claim &&
-                      !isAttemptingClaim &&
-                      (() => {
-                        const claim = roomState.game.claim!;
-                        const myStatus =
-                          socketId && roomState.game.playerStatuses
-                            ? roomState.game.playerStatuses[socketId] || "ACTIVE"
-                            : "ACTIVE";
-                        const canParticipate = myStatus !== "OUT";
-                        const hasGesture = claim.gestureType && claim.gestureType !== null;
-                        const alreadyClaimed = socketId && claim.claimers.includes(socketId);
-
-                        if (!canParticipate) return null;
-                        // Don't show hint if player already claimed
-                        if (alreadyClaimed) return null;
-
-                        return (
-                          <div className="mt-2 text-center pointer-events-none">
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {hasGesture
-                                ? "Toca el montón para iniciar el gesto"
-                                : "Toca el montón para reclamar"}
-                            </p>
-                          </div>
-                        );
-                      })()}
-
-                    {/* Claim countdown - subtle display */}
-                    {roomState.game.claim && (
-                      <div className="mt-2 text-center">
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Tiempo:{" "}
-                          {(
-                            Math.max(0, roomState.game.claim.closesAt - currentTime) / 1000
-                          ).toFixed(1)}
-                          s
-                        </p>
-                        {roomState.game.claim.claimers.length > 0 && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            {roomState.game.claim.claimers.length} reclamando
-                          </p>
-                        )}
-                      </div>
-                    )}
                   </PileCenter>
                 </div>
 

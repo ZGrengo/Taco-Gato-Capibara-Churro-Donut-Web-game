@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useState, useCallback, useRef } from "react";
+import { forwardRef, useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 interface Tap {
@@ -18,18 +18,46 @@ interface DeckStackProps {
   onFlip?: () => void;
   onDisabledClick?: (reason: string) => void;
   helpText?: string | null; // Text to show in bubble above deck (null = hide)
+  topCardRef?: React.RefObject<HTMLDivElement>; // Optional ref for top card (for future drag)
 }
 
+// Deterministic rotations table to avoid flicker
+const ROTATIONS = [-1.5, 1.2, -0.8, 1.8, -1.2, 0.9];
+
 export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
-  ({ count, backSrc, isMyTurn = false, enabled = false, disabledReason, onFlip, onDisabledClick, helpText }, ref) => {
+  ({ count, backSrc, isMyTurn = false, enabled = false, disabledReason, onFlip, onDisabledClick, helpText, topCardRef }, ref) => {
     const shouldReduceMotion = useReducedMotion();
     const [isPressed, setIsPressed] = useState(false);
+    const [isHovering, setIsHovering] = useState(false);
+    const [isPointerFine, setIsPointerFine] = useState(false);
     const [taps, setTaps] = useState<Tap[]>([]);
     const containerRef = useRef<HTMLDivElement>(null);
+    const internalTopCardRef = useRef<HTMLDivElement>(null);
     const lastTapRef = useRef<{ id: string; x: number; y: number; time: number } | null>(null);
     
     // Render 4-6 card backs in a stack (not all cards)
     const stackLayers = Math.min(6, Math.max(4, Math.min(count, 6)));
+    const baseLayers = Math.max(0, stackLayers - 1); // Layers below the top card
+
+    // Detect if pointer is fine (desktop/mouse)
+    useEffect(() => {
+      const mediaQuery = window.matchMedia("(pointer: fine)");
+      setIsPointerFine(mediaQuery.matches);
+
+      const handleChange = (e: MediaQueryListEvent) => {
+        setIsPointerFine(e.matches);
+      };
+
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }, []);
+
+    // Expose top card ref if provided
+    useEffect(() => {
+      if (topCardRef && internalTopCardRef.current) {
+        (topCardRef as React.MutableRefObject<HTMLDivElement | null>).current = internalTopCardRef.current;
+      }
+    }, [topCardRef]);
 
     // Helper to create tap ring
     const addTapRing = useCallback((x: number, y: number) => {
@@ -101,7 +129,70 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
 
     const handlePointerLeave = useCallback(() => {
       setIsPressed(false);
+      setIsHovering(false);
     }, []);
+
+    const handleMouseEnter = useCallback(() => {
+      setIsHovering(true);
+    }, []);
+
+    const handleMouseLeave = useCallback(() => {
+      setIsHovering(false);
+    }, []);
+
+    // Determine if peek hover is allowed
+    const canHoverPeek = enabled && count > 0 && isPointerFine && !shouldReduceMotion;
+
+    // Variants for top card hover peek
+    const topCardVariants = {
+      rest: {
+        y: 0,
+        x: 0,
+        rotate: 0,
+        scale: 1,
+      },
+      hover: {
+        y: -12,
+        x: 4,
+        rotate: -3,
+        scale: 1.02,
+        transition: {
+          duration: 0.2,
+          ease: "easeOut",
+        },
+      },
+      pressed: {
+        scale: 0.99,
+        transition: {
+          duration: 0.05,
+        },
+      },
+    };
+
+    // Calculate animation state for top card
+    const getTopCardAnimation = () => {
+      if (isPressed && enabled) {
+        // When pressed, maintain hover position if hovering, otherwise rest
+        if (isHovering && canHoverPeek) {
+          return {
+            y: -12,
+            x: 4,
+            rotate: -3,
+            scale: 0.99, // Press feedback
+          };
+        }
+        return {
+          y: 0,
+          x: 0,
+          rotate: 0,
+          scale: 0.99, // Press feedback
+        };
+      }
+      if (isHovering && canHoverPeek) {
+        return "hover";
+      }
+      return "rest";
+    };
 
     if (count === 0) {
       return (
@@ -131,7 +222,7 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
         className="relative w-56 h-72"
         style={{ position: "relative" }}
       >
-        <motion.div
+        <div
           ref={containerRef}
           role="button"
           tabIndex={enabled ? 0 : -1}
@@ -143,6 +234,8 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
           onPointerLeave={handlePointerLeave}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
           className={`relative w-full h-full ${
             enabled ? "cursor-pointer" : "cursor-not-allowed"
           }`}
@@ -150,31 +243,59 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
             opacity: baseOpacity,
             filter: `saturate(${saturation})`,
           }}
-          whileHover={enabled && isMyTurn && !shouldReduceMotion ? { y: -4, transition: { duration: 0.2 } } : {}}
-          animate={isPressed && enabled ? { scale: 0.99 } : { scale: 1 }}
-          transition={{ duration: 0.1 }}
         >
-        {/* Stack of card backs */}
-        {Array.from({ length: stackLayers }).map((_, index) => {
-          const translateX = index * 2;
-          const translateY = index * 2;
-          const zIndex = stackLayers - index;
-          const layerOpacity = (1 - index * 0.05) * baseOpacity;
+          {/* Base stack layers (bottom cards, no hover animation) */}
+          {baseLayers > 0 && Array.from({ length: baseLayers }).map((_, index) => {
+            const translateX = index * 2;
+            const translateY = index * 2;
+            const zIndex = baseLayers - index;
+            const layerOpacity = (1 - index * 0.05) * baseOpacity;
+            const rotation = ROTATIONS[index % ROTATIONS.length];
 
-          return (
+            return (
+              <div
+                key={`base-${index}`}
+                className="absolute rounded-xl shadow-lg border-4 border-gray-300 dark:border-gray-600 overflow-hidden"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  transform: `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`,
+                  zIndex,
+                  opacity: layerOpacity,
+                }}
+              >
+                <img
+                  src={backSrc}
+                  alt="Card back"
+                  className="w-full h-full object-cover"
+                  draggable={false}
+                />
+              </div>
+            );
+          })}
+
+          {/* Top card (separate, with hover peek animation) */}
+          {stackLayers > 0 && (
             <motion.div
-              key={index}
-              className="absolute rounded-xl shadow-lg border-4 border-gray-300 dark:border-gray-600 overflow-hidden"
+              ref={internalTopCardRef}
+              className="absolute rounded-xl shadow-lg border-4 border-gray-300 dark:border-gray-600 overflow-hidden z-20"
               style={{
                 width: "100%",
                 height: "100%",
-                transform: `translate(${translateX}px, ${translateY}px)`,
-                zIndex,
-                opacity: layerOpacity,
+                transform: `translate(${baseLayers * 2}px, ${baseLayers * 2}px)`,
+                opacity: baseOpacity,
               }}
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: layerOpacity }}
-              transition={{ delay: index * 0.05 }}
+              variants={topCardVariants}
+              initial="rest"
+              animate={getTopCardAnimation()}
+              transition={
+                typeof getTopCardAnimation() === "string"
+                  ? undefined // Use variant transitions
+                  : {
+                      duration: isPressed ? 0.05 : 0.2,
+                      ease: "easeOut",
+                    }
+              }
             >
               <img
                 src={backSrc}
@@ -183,8 +304,7 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
                 draggable={false}
               />
             </motion.div>
-          );
-        })}
+          )}
 
           {/* Badge with count */}
           <motion.div
@@ -266,7 +386,7 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
       </motion.div>
     );
   }
