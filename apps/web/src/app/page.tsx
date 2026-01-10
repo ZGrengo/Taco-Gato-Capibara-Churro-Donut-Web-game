@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, memo } from "react";
 import { io, Socket } from "socket.io-client";
 import {
   EVENTS,
@@ -22,7 +22,7 @@ import {
   CIRCLE_TARGET_CENTER_TOL,
   CIRCLE_MIN_POINTS,
 } from "@acme/shared";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ClickFrenzyGesture } from "../components/ClickFrenzyGesture";
 import { BubblesGesture } from "../components/BubblesGesture";
 import { CircleGesture } from "../components/CircleGesture";
@@ -33,8 +33,15 @@ import { ClickablePileArea } from "../components/ClickablePileArea";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
-// Card Display Component - moved outside to prevent recreation on each render
-function CardDisplay({ card }: { card: Card }) {
+// Sound effects hook (placeholder for future audio implementation)
+function playSfx(name: 'oops' | 'flip' | 'slap' | 'pop') {
+  // TODO: Implement audio playback
+  // Example: new Audio(`/sounds/${name}.mp3`).play();
+  console.log(`[SFX] Playing: ${name}`);
+}
+
+// Card Display Component - memoized to prevent unnecessary re-renders
+const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
   const bgColorClasses = {
     yellow: "bg-yellow-400",
     orange: "bg-orange-400",
@@ -65,9 +72,10 @@ function CardDisplay({ card }: { card: Card }) {
 
     return (
       <motion.div
-        key={card.id}
+        layoutId={`card-${card.id}`}
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.8, opacity: 0 }}
         transition={{ duration: 0.3 }}
         className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
       >
@@ -106,12 +114,13 @@ function CardDisplay({ card }: { card: Card }) {
 
     return (
       <motion.div
-        key={card.id}
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.3 }}
-      className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
-    >
+        layoutId={`card-${card.id}`}
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.8, opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
+      >
       {!imageError && (
         <div className="absolute inset-0 flex items-center justify-center">
           <img
@@ -142,7 +151,7 @@ function CardDisplay({ card }: { card: Card }) {
 
   // Fallback (shouldn't happen)
   return null;
-}
+});
 
 export default function Home() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -156,6 +165,9 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [isAttemptingClaim, setIsAttemptingClaim] = useState(false);
   const [currentClaimId, setCurrentClaimId] = useState<string | null>(null);
+  
+  // Reduced motion preference (at component level)
+  const shouldReduceMotion = useReducedMotion();
   
   // Refs for animation calculations
   const deckRef = useRef<HTMLDivElement>(null);
@@ -275,8 +287,23 @@ export default function Home() {
     if (claimId !== currentClaimId) {
       setCurrentClaimId(claimId);
       setIsAttemptingClaim(false);
+      // If claim disappeared while we were attempting a gesture, it means we failed/expired
+      // But don't reset gesture tracking refs here - let the penalty detection handle it
     }
   }, [roomState?.game?.claim?.id, currentClaimId]);
+
+  // Track when gesture attempt is cleared (gesture completed successfully or manually reset)
+  useEffect(() => {
+    if (!isAttemptingClaim) {
+      // If gesture attempt ended and it wasn't due to claim change, reset tracking
+      // (This happens when handleGestureComplete is called)
+      if (gestureAttemptStartedAtRef.current !== null && gestureClaimIdRef.current === roomState?.game?.claim?.id) {
+        // Gesture was completed successfully, clear tracking
+        gestureAttemptStartedAtRef.current = null;
+        gestureClaimIdRef.current = null;
+      }
+    }
+  }, [isAttemptingClaim, roomState?.game?.claim?.id]);
 
   // Handle pile click - this is the main interaction point
   const handlePileClick = (e: React.MouseEvent) => {
@@ -289,8 +316,9 @@ export default function Home() {
         : "ACTIVE";
     if (myStatus === "OUT") return;
 
-    // Mark slap intent timestamp
+    // Mark slap intent timestamp and snapshot pileCount
     setSlapIntentAt(Date.now());
+    slapPileSnapshotRef.current = roomState.game.pileCount;
 
     // If gesture is active, don't handle click here (let gesture handle it)
     if (isAttemptingClaim && roomState.game.claim?.gestureType) {
@@ -320,6 +348,14 @@ export default function Home() {
     // If claim has gesture and we haven't started attempting, activate gesture mode
     if (hasGesture && !isAttemptingClaim) {
       setIsAttemptingClaim(true);
+      // Mark gesture attempt start time and claim ID for penalty detection
+      // Also ensure we have a snapshot of pileCount at gesture start (already captured in handlePileClick above)
+      gestureAttemptStartedAtRef.current = Date.now();
+      gestureClaimIdRef.current = claim.id;
+      // Ensure snapshot is set (should already be set above, but double-check)
+      if (slapPileSnapshotRef.current === null) {
+        slapPileSnapshotRef.current = roomState.game.pileCount;
+      }
       e.stopPropagation(); // Prevent any other handlers
       return;
     }
@@ -336,6 +372,9 @@ export default function Home() {
     if (!roomState?.game?.claim) return;
     handleClaim(roomState.game.claim.id);
     setIsAttemptingClaim(false);
+    // Reset gesture tracking when gesture completes successfully
+    gestureAttemptStartedAtRef.current = null;
+    gestureClaimIdRef.current = null;
   };
 
   // Calculate center point of an element
@@ -353,8 +392,13 @@ export default function Home() {
   
   // False slap detection states
   const [slapIntentAt, setSlapIntentAt] = useState<number | null>(null);
+  const slapPileSnapshotRef = useRef<number | null>(null); // Snapshot of pileCount at slap intent
   const [oopsKey, setOopsKey] = useState(0);
+  const [oopsCardCount, setOopsCardCount] = useState<number>(0); // Number of cards for "Oops!" message
   const [shakeKey, setShakeKey] = useState(0);
+  const [screenShakeKey, setScreenShakeKey] = useState(0); // Key for screen shake animation
+  const gestureAttemptStartedAtRef = useRef<number | null>(null); // When gesture attempt started (for detecting expired/failed gestures)
+  const gestureClaimIdRef = useRef<string | null>(null); // Claim ID we're attempting (to detect if it expired/failed)
   
   // Refs for tracking previous counts to detect penalties
   const prevPileCountRef = useRef<number>(0);
@@ -398,7 +442,7 @@ export default function Home() {
     }
   }, [roomState?.game, triggerImpact, flyingCards.length]);
 
-  // Detect false slap (penalty) - when player receives cards after clicking pile
+  // Detect false slap (penalty) - when player receives cards after clicking pile or failing gesture
   useEffect(() => {
     if (!roomState?.game || !socketId) {
       // Update refs even if game is not available
@@ -414,35 +458,75 @@ export default function Home() {
     const myHandCount = game.handCounts[socketId] ?? 0;
     const pileCount = game.pileCount;
 
-    // Check if we have an active slap intent
-    if (slapIntentAt !== null) {
-      const timeSinceSlap = Date.now() - slapIntentAt;
+    // Check for penalty condition: hand count increased AND pile count decreased
+    const handCountIncreased = myHandCount > prevMyHandCountRef.current;
+    const pileCountDecreased = pileCount < prevPileCountRef.current;
 
-      // Only check within the 1500ms window
-      if (timeSinceSlap < 1500) {
-        // Check for penalty condition: hand count increased AND pile count decreased
-        const handCountIncreased = myHandCount > prevMyHandCountRef.current;
-        const pileCountDecreased = pileCount < prevPileCountRef.current;
+    if (handCountIncreased && pileCountDecreased) {
+      // Penalty detected! Check if it's from a slap intent or a failed gesture attempt
+      let shouldShowOops = false;
+      let cardCount = prevPileCountRef.current;
 
-        if (handCountIncreased && pileCountDecreased) {
-          // False slap detected! Trigger animations
-          setOopsKey((prev) => prev + 1);
-          setShakeKey((prev) => prev + 1);
+      // Case 1: Direct slap intent (click on pile without gesture, or false slap)
+      if (slapIntentAt !== null) {
+        const timeSinceSlap = Date.now() - slapIntentAt;
+        // Check within the 1500ms window for direct slaps
+        if (timeSinceSlap < CLAIM_WINDOW_MS) {
+          shouldShowOops = true;
+          cardCount = slapPileSnapshotRef.current ?? prevPileCountRef.current;
           setSlapIntentAt(null); // Consume the intent
-          
-          // Hide "Oops!" toast after 800ms (display time) + 600ms (exit animation) = 1400ms
-          // This allows the exit animation to complete
-          setTimeout(() => {
-            setOopsKey(0);
-          }, 1400);
+          slapPileSnapshotRef.current = null; // Reset snapshot
         }
+      }
+
+      // Case 2: Failed/expired gesture attempt
+      // We were attempting a gesture, but the claim expired, failed, or we're not in claimers, and we received cards
+      if (!shouldShowOops && gestureAttemptStartedAtRef.current !== null) {
+        const currentClaimId = game.claim?.id || null;
+        const attemptedClaimId = gestureClaimIdRef.current;
+
+        // Check if the claim we were attempting no longer exists, or we're not in the claimers list
+        const isClaimGone = attemptedClaimId !== null && currentClaimId !== attemptedClaimId;
+        const wasInClaimers = attemptedClaimId && currentClaimId && game.claim?.claimers.includes(socketId);
+        const isNotInClaimers = attemptedClaimId && currentClaimId && !wasInClaimers;
+
+        // If claim expired, changed, or we failed and aren't in claimers, show "Oops!"
+        if (isClaimGone || isNotInClaimers) {
+          shouldShowOops = true;
+          // Use snapshot from when gesture started (captured at click), or fallback to previous pile count
+          cardCount = slapPileSnapshotRef.current ?? prevPileCountRef.current;
+
+          // Reset gesture tracking
+          gestureAttemptStartedAtRef.current = null;
+          gestureClaimIdRef.current = null;
+          setIsAttemptingClaim(false);
+        }
+      }
+
+      if (shouldShowOops) {
+        // Trigger animations and set card count for display
+        setOopsCardCount(cardCount);
+        setOopsKey((prev) => prev + 1);
+        setShakeKey((prev) => prev + 1);
+        setScreenShakeKey((prev) => prev + 1);
+        
+        // Play sound effect (placeholder)
+        playSfx('oops');
+        
+        // Hide "Oops!" toast after ~900ms (display time + exit animation)
+        setTimeout(() => {
+          setOopsKey(0);
+          setOopsCardCount(0);
+          // Reset screen shake after animation completes
+          setScreenShakeKey(0);
+        }, 900);
       }
     }
 
     // Update refs for next comparison
     prevMyHandCountRef.current = myHandCount;
     prevPileCountRef.current = pileCount;
-  }, [roomState?.game, socketId, slapIntentAt]);
+  }, [roomState?.game, socketId, slapIntentAt, isAttemptingClaim]);
 
   // Clear slap intent after 1500ms if not consumed
   useEffect(() => {
@@ -450,6 +534,7 @@ export default function Home() {
 
     const timer = setTimeout(() => {
       setSlapIntentAt(null);
+      slapPileSnapshotRef.current = null; // Reset snapshot if intent expires
     }, 1500);
 
     return () => clearTimeout(timer);
@@ -782,8 +867,38 @@ export default function Home() {
           {/* In Game Phase */}
           {roomState && roomState.phase === "IN_GAME" && roomState.game && (
             <motion.div
+              key={screenShakeKey > 0 ? `shake-${screenShakeKey}` : 'game-area'}
               initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
+              animate={
+                screenShakeKey > 0 && !shouldReduceMotion
+                  ? {
+                      opacity: 1,
+                      x: [0, -2, 2, -1, 1, 0],
+                      y: [0, 1, -1, 1, 0],
+                    }
+                  : {
+                      opacity: 1,
+                      y: 0,
+                    }
+              }
+              transition={
+                screenShakeKey > 0 && !shouldReduceMotion
+                  ? {
+                      x: {
+                        duration: 0.2,
+                        ease: "easeOut",
+                      },
+                      y: {
+                        duration: 0.2,
+                        ease: "easeOut",
+                      },
+                      opacity: { duration: 0 },
+                    }
+                  : {
+                      opacity: { duration: 0.3 },
+                      y: { duration: 0.3 },
+                    }
+              }
               className="mt-6"
             >
               <div className="mb-6">
@@ -824,6 +939,7 @@ export default function Home() {
                       ref={deckRef}
                       count={roomState.game.handCounts[socketId] || 0}
                       backSrc="/assets/card-back.png"
+                      isMyTurn={roomState.game.turnPlayerId === socketId}
                     />
                   </div>
                 )}
@@ -838,6 +954,7 @@ export default function Home() {
                     impactKey={impactKey}
                     shakeKey={shakeKey}
                     oopsKey={oopsKey}
+                    oopsCardCount={oopsCardCount}
                   >
                     <ClickablePileArea
                       onClick={handlePileClick}
@@ -845,14 +962,23 @@ export default function Home() {
                       hasGesture={!!roomState.game.claim?.gestureType}
                     >
                       {roomState.game.topCard ? (
-                        <CardDisplay card={roomState.game.topCard} />
+                        <AnimatePresence mode="wait">
+                          <CardDisplay key={roomState.game.topCard.id} card={roomState.game.topCard} />
+                        </AnimatePresence>
                       ) : (
-                        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-8 border-4 border-gray-300 dark:border-gray-600 min-h-[280px] flex items-center justify-center">
+                        <motion.div
+                          layoutId="empty-pile"
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          exit={{ scale: 0.8, opacity: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex items-center justify-center p-4 relative overflow-hidden"
+                        >
                           <div className="text-center text-gray-400 dark:text-gray-600">
                             <p className="text-xl">Pila vacía</p>
                             <p className="text-sm mt-2">Haz flip para empezar</p>
                           </div>
-                        </div>
+                        </motion.div>
                       )}
 
                       {/* Inline gesture overlay - only shown when attempting claim with gesture */}
@@ -1009,9 +1135,9 @@ export default function Home() {
 
                 {/* Flip Button */}
                 <div className="mb-6">
-                  <button
-                    onClick={handleFlipCard}
-                    disabled={
+                  {(() => {
+                    const isMyTurn = socketId && roomState.game.turnPlayerId === socketId;
+                    const isDisabled =
                       !socketId ||
                       !socket ||
                       !!roomState.game.claim ||
@@ -1020,22 +1146,36 @@ export default function Home() {
                         const myStatus = roomState.game.playerStatuses[socketId] || "ACTIVE";
                         const myHandCount = roomState.game.handCounts[socketId] || 0;
                         return myStatus === "OUT" || myStatus === "PENDING_EXIT" || myHandCount === 0 || roomState.game.turnPlayerId !== socketId;
-                      })()
-                    }
-                    className={`w-full px-6 py-4 rounded-lg font-bold text-lg transition-all ${
-                      !socketId ||
-                      !socket ||
-                      !!roomState.game.claim ||
-                      (() => {
-                        if (!socketId || !roomState.game.playerStatuses || !roomState.game.handCounts) return true;
-                        const myStatus = roomState.game.playerStatuses[socketId] || "ACTIVE";
-                        const myHandCount = roomState.game.handCounts[socketId] || 0;
-                        return myStatus === "OUT" || myStatus === "PENDING_EXIT" || myHandCount === 0 || roomState.game.turnPlayerId !== socketId;
-                      })()
-                        ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                        : "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
-                    }`}
-                  >
+                      })();
+                    
+                    return (
+                      <motion.button
+                        onClick={handleFlipCard}
+                        disabled={isDisabled}
+                        animate={
+                          !isDisabled && isMyTurn && !shouldReduceMotion
+                            ? {
+                                scale: [1, 1.02, 1],
+                              }
+                            : {}
+                        }
+                        transition={
+                          !isDisabled && isMyTurn && !shouldReduceMotion
+                            ? {
+                                scale: {
+                                  duration: 1.2,
+                                  repeat: Infinity,
+                                  ease: "easeInOut",
+                                },
+                              }
+                            : {}
+                        }
+                        className={`w-full px-6 py-4 rounded-lg font-bold text-lg transition-all ${
+                          isDisabled
+                            ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                            : "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
+                        }`}
+                      >
                     {(() => {
                       if (!socketId || !socket) return "Conectando...";
                       if (!!roomState.game.claim) return "Esperando resolución de claim...";
@@ -1055,7 +1195,9 @@ export default function Home() {
                       
                       return "Esperando tu turno...";
                     })()}
-                  </button>
+                      </motion.button>
+                    );
+                  })()}
                 </div>
 
                 {/* Players List */}
@@ -1070,6 +1212,7 @@ export default function Home() {
                         player.id === roomState.game?.turnPlayerId;
                       const handCount = roomState.game?.handCounts[player.id] || 0;
                       const playerStatus = roomState.game?.playerStatuses[player.id] || "ACTIVE";
+                      
                       return (
                         <motion.div
                           key={player.id}
@@ -1079,7 +1222,36 @@ export default function Home() {
                             }
                           }}
                           initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
+                          animate={
+                            isCurrentTurn && !shouldReduceMotion
+                              ? {
+                                  opacity: 1,
+                                  x: 0,
+                                  scale: [1, 1.02, 1],
+                                  boxShadow: [
+                                    "0 0 0 0px rgba(34, 197, 94, 0)",
+                                    "0 0 20px 4px rgba(34, 197, 94, 0.4)",
+                                    "0 0 0 0px rgba(34, 197, 94, 0)",
+                                  ],
+                                }
+                              : { opacity: 1, x: 0 }
+                          }
+                          transition={
+                            isCurrentTurn && !shouldReduceMotion
+                              ? {
+                                  scale: {
+                                    duration: 1.2,
+                                    repeat: Infinity,
+                                    ease: "easeInOut",
+                                  },
+                                  boxShadow: {
+                                    duration: 1.2,
+                                    repeat: Infinity,
+                                    ease: "easeInOut",
+                                  },
+                                }
+                              : {}
+                          }
                           className={`flex items-center justify-between p-3 rounded-lg ${
                             isCurrentTurn
                               ? "bg-green-100 dark:bg-green-900/30 border-2 border-green-500"

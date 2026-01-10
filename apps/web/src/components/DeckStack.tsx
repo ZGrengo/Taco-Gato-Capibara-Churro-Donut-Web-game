@@ -1,15 +1,17 @@
 "use client";
 
 import { forwardRef } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
 interface DeckStackProps {
   count: number;
   backSrc: string;
+  isMyTurn?: boolean;
 }
 
 export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
-  ({ count, backSrc }, ref) => {
+  ({ count, backSrc, isMyTurn = false }, ref) => {
+    const shouldReduceMotion = useReducedMotion();
     // Render 4-6 card backs in a stack (not all cards)
     const stackLayers = Math.min(6, Math.max(4, Math.min(count, 6)));
 
@@ -31,18 +33,23 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
       );
     }
 
+    // Base opacity: reduced when not my turn
+    const baseOpacity = isMyTurn ? 1 : 0.85;
+
     return (
-      <div
+      <motion.div
         ref={ref}
         className="relative w-56 h-72"
-        style={{ position: "relative" }}
+        style={{ position: "relative", opacity: baseOpacity }}
+        whileHover={isMyTurn && !shouldReduceMotion ? { y: -4, transition: { duration: 0.2 } } : {}}
+        transition={{ duration: 0.2 }}
       >
         {/* Stack of card backs */}
         {Array.from({ length: stackLayers }).map((_, index) => {
           const translateX = index * 2;
           const translateY = index * 2;
           const zIndex = stackLayers - index;
-          const opacity = 1 - index * 0.05;
+          const layerOpacity = (1 - index * 0.05) * baseOpacity;
 
           return (
             <motion.div
@@ -53,10 +60,10 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
                 height: "100%",
                 transform: `translate(${translateX}px, ${translateY}px)`,
                 zIndex,
-                opacity,
+                opacity: layerOpacity,
               }}
               initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity }}
+              animate={{ scale: 1, opacity: layerOpacity }}
               transition={{ delay: index * 0.05 }}
             >
               <img
@@ -75,10 +82,11 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 200 }}
+          style={{ opacity: baseOpacity }}
         >
           {count}
         </motion.div>
-      </div>
+      </motion.div>
     );
   }
 );
