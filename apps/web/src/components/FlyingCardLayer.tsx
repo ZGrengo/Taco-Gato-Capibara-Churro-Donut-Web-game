@@ -15,7 +15,7 @@ interface FlyingCard {
 interface FlyingCardLayerProps {
   flyingCards: FlyingCard[];
   onCardComplete: (id: string) => void;
-  onImpact?: () => void;
+  onImpact?: (cardId: string) => void; // Pass cardId to identify which card landed
 }
 
 export function FlyingCardLayer({
@@ -90,10 +90,12 @@ export function FlyingCardLayer({
                 ease: "easeInOut",
               }}
               onAnimationComplete={() => {
-                onCardComplete(card.id);
+                // Trigger impact callback first (when card lands)
                 if (onImpact) {
-                  onImpact();
+                  onImpact(card.id);
                 }
+                // Then mark card as complete
+                onCardComplete(card.id);
               }}
             >
               <div className="w-full h-full rounded-xl shadow-2xl border-4 border-gray-300 dark:border-gray-600 overflow-hidden">

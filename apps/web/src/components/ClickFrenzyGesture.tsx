@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { useAudio } from "../hooks/useAudio";
 
 interface ClickFrenzyGestureProps {
   claimId: string;
@@ -22,12 +23,24 @@ export function ClickFrenzyGesture({
   const [lastClickAt, setLastClickAt] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const { playSfx } = useAudio();
+  
+  // Throttle for SFX (separate from click throttle)
+  const lastSfxAtRef = useRef<number>(0);
+  const SFX_MIN_INTERVAL_MS = 50; // Throttle SFX to prevent spam
+  
+  // Track previous claimId to reset on change
+  const prevClaimIdRef = useRef<string>(claimId);
 
   // Reset when claimId changes
   useEffect(() => {
-    setClicksCount(0);
-    setLastClickAt(0);
-    setIsComplete(false);
+    if (claimId !== prevClaimIdRef.current) {
+      setClicksCount(0);
+      setLastClickAt(0);
+      setIsComplete(false);
+      lastSfxAtRef.current = 0; // Reset SFX throttle
+      prevClaimIdRef.current = claimId;
+    }
   }, [claimId]);
 
   // Update current time every 50ms for countdown
@@ -54,9 +67,26 @@ export function ClickFrenzyGesture({
 
     const now = Date.now();
 
-    // Check minimum interval
+    // Check minimum interval for valid clicks (game rule, not SFX throttle)
     if (now - lastClickAt >= minIntervalMs) {
       const newCount = clicksCount + 1;
+      
+      // Play sound effect with progressive pitch (only if SFX throttle allows)
+      // Use newCount (after increment) for pitch calculation
+      if (now - lastSfxAtRef.current >= SFX_MIN_INTERVAL_MS) {
+        const step = requiredClicks > 1 ? (newCount - 1) / (requiredClicks - 1) : 0; // 0..1 (0-based: 0, 1/9, 2/9, ..., 9/9)
+        const baseRate = 0.95 + step * 0.60; // 0.95..1.55 (doubled: was 0.30, now 0.60)
+        const rate = Math.max(0.72, Math.min(1.55, baseRate));
+        
+        // Debug log
+        console.log(`[ClickFrenzy] Click ${newCount}/${requiredClicks}: step=${step.toFixed(2)}, rate=${rate.toFixed(3)}`);
+        
+        // Only play if this click counts (valid interval passed)
+        playSfx('special_click', { rate, volume: 0.55 });
+        lastSfxAtRef.current = now;
+      }
+
+      // Update state
       setClicksCount(newCount);
       setLastClickAt(now);
 
@@ -66,6 +96,7 @@ export function ClickFrenzyGesture({
         onComplete();
       }
     }
+    // Note: If click doesn't pass minIntervalMs check, no sound is played (silence)
   };
 
   const progress = Math.min(clicksCount / requiredClicks, 1);

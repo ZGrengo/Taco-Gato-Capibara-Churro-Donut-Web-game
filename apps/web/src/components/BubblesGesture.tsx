@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAudio } from "../hooks/useAudio";
 
 interface Bubble {
   id: string;
@@ -116,6 +117,11 @@ export function BubblesGesture({
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [containerSize, setContainerSize] = useState({ width: 400, height: 300 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const { playSfx } = useAudio();
+  
+  // Track popped count for progressive pitch (reset when claimId changes)
+  const poppedCountRef = useRef<number>(0);
+  const prevClaimIdRef = useRef<string>(claimId);
 
   // Update current time every 50ms for countdown
   useEffect(() => {
@@ -157,12 +163,18 @@ export function BubblesGesture({
           popped: false,
         }))
       );
+      // Reset popped count when bubbles are initialized (new gesture)
+      poppedCountRef.current = 0;
     }
   }, [bubblePositions, claimId, containerSize, bubbles.length]);
 
   // Reset when claimId changes
   useEffect(() => {
-    setBubbles([]);
+    if (claimId !== prevClaimIdRef.current) {
+      setBubbles([]);
+      poppedCountRef.current = 0; // Reset popped count when claim changes
+      prevClaimIdRef.current = claimId;
+    }
   }, [claimId]);
 
   // Check if expired
@@ -185,6 +197,28 @@ export function BubblesGesture({
   const handleBubblePop = (bubbleId: string) => {
     if (isExpired) return;
 
+    // Find bubble to pop (must exist and not already popped)
+    const bubbleToPop = bubbles.find((b) => b.id === bubbleId && !b.popped);
+    if (!bubbleToPop) return; // Already popped or doesn't exist
+
+    // Calculate progressive pitch based on current popped count (BEFORE incrementing)
+    const totalBubbles = bubbles.length;
+    const currentPoppedCount = poppedCountRef.current;
+    const step = totalBubbles > 1 ? currentPoppedCount / (totalBubbles - 1) : 0; // 0..1
+    const baseRate = 0.95 + step * 0.40; // 0.95..1.35 (doubled: was 0.20, now 0.40)
+    const jitter = (Math.random() - 0.5) * 0.02; // -0.01 to +0.01
+    const rate = Math.max(0.72, Math.min(1.35, baseRate + jitter));
+
+    // Debug log
+    console.log(`[Bubbles] Pop ${currentPoppedCount + 1}/${totalBubbles}: step=${step.toFixed(2)}, rate=${rate.toFixed(3)}`);
+
+    // Play sound effect with progressive pitch (only once per bubble pop)
+    playSfx('special_bubble', { rate, volume: 0.7 });
+
+    // Increment popped count AFTER calculating pitch
+    poppedCountRef.current += 1;
+
+    // Update bubble state
     setBubbles((prev) =>
       prev.map((bubble) => (bubble.id === bubbleId ? { ...bubble, popped: true } : bubble))
     );

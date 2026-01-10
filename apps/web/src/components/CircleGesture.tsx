@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { useAudio } from "../hooks/useAudio";
 
 interface Point {
   x: number;
@@ -118,13 +119,25 @@ export function CircleGesture({
   const [currentTime, setCurrentTime] = useState(Date.now());
   const containerRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLDivElement>(null);
+  const { playSfx } = useAudio();
+  
+  // Track previous claimId to reset on change
+  const prevClaimIdRef = useRef<string>(claimId);
+  const hasPlayedCompletionSoundRef = useRef<boolean>(false);
+  
+  // Track active pointer ID for capture/release
+  const activePointerIdRef = useRef<number | null>(null);
 
   // Reset when claimId changes
   useEffect(() => {
-    setPoints([]);
-    setIsDrawing(false);
-    setIsComplete(false);
-    setHasError(false);
+    if (claimId !== prevClaimIdRef.current) {
+      setPoints([]);
+      setIsDrawing(false);
+      setIsComplete(false);
+      setHasError(false);
+      hasPlayedCompletionSoundRef.current = false; // Reset completion sound flag
+      prevClaimIdRef.current = claimId;
+    }
   }, [claimId]);
 
   // Update current time every 50ms for countdown
@@ -134,6 +147,26 @@ export function CircleGesture({
     }, 50);
     return () => clearInterval(interval);
   }, []);
+
+  // Prevent page scroll on iOS Safari while drawing (fallback for browsers that ignore touchAction)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleTouchMove = (e: TouchEvent) => {
+      // Only prevent default if actively drawing
+      if (isDrawing) {
+        e.preventDefault();
+      }
+    };
+
+    // Use passive: false to allow preventDefault
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+    return () => {
+      container.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [isDrawing]);
 
   // Check if expired
   const isExpired = currentTime >= closesAt;
@@ -153,8 +186,8 @@ export function CircleGesture({
     };
   };
 
-  // Get point coordinates relative to container
-  const getPointFromEvent = (e: React.PointerEvent): Point | null => {
+  // Get point coordinates relative to container using getBoundingClientRect
+  const getPointFromEvent = (e: React.PointerEvent | PointerEvent): Point | null => {
     if (!containerRef.current) return null;
 
     const rect = containerRef.current.getBoundingClientRect();
@@ -169,6 +202,17 @@ export function CircleGesture({
     if (isComplete || isExpired) return;
 
     e.preventDefault();
+    
+    // Capture pointer to receive all pointer events, even if outside container
+    const target = e.currentTarget as HTMLElement;
+    try {
+      target.setPointerCapture(e.pointerId);
+      activePointerIdRef.current = e.pointerId;
+    } catch (error) {
+      // setPointerCapture may fail in some browsers, continue anyway
+      console.debug('[CircleGesture] setPointerCapture failed:', error);
+    }
+    
     setIsDrawing(true);
     setHasError(false);
     const point = getPointFromEvent(e);
@@ -179,6 +223,11 @@ export function CircleGesture({
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDrawing || isComplete || isExpired) return;
+    
+    // Only process events from the captured pointer
+    if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) {
+      return;
+    }
 
     e.preventDefault();
     const point = getPointFromEvent(e);
@@ -189,8 +238,26 @@ export function CircleGesture({
 
   const handlePointerUp = (e: React.PointerEvent) => {
     if (!isDrawing || isComplete || isExpired) return;
+    
+    // Only process events from the captured pointer
+    if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) {
+      return;
+    }
 
     e.preventDefault();
+    
+    // Release pointer capture
+    const target = e.currentTarget as HTMLElement;
+    if (activePointerIdRef.current !== null) {
+      try {
+        target.releasePointerCapture(activePointerIdRef.current);
+      } catch (error) {
+        // releasePointerCapture may fail if pointer was already released
+        console.debug('[CircleGesture] releasePointerCapture failed:', error);
+      }
+      activePointerIdRef.current = null;
+    }
+    
     setIsDrawing(false);
 
     const targetCenter = getTargetCenter();
@@ -213,11 +280,37 @@ export function CircleGesture({
 
     if (isValid) {
       setIsComplete(true);
+      
+      // Play completion sound only once (when gesture completes successfully)
+      if (!hasPlayedCompletionSoundRef.current) {
+        // Use special_circle (file name) or special_draw (will be mapped to special_circle)
+        playSfx('special_draw', { rate: 1.0, volume: 0.75 });
+        hasPlayedCompletionSoundRef.current = true;
+      }
+      
       onComplete();
     } else {
+      // On failure, do NOT play any sound (silence)
       setHasError(true);
       setPoints([]);
     }
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent) => {
+    // Release pointer capture on cancel (e.g., scroll interrupted)
+    const target = e.currentTarget as HTMLElement;
+    if (activePointerIdRef.current !== null) {
+      try {
+        target.releasePointerCapture(activePointerIdRef.current);
+      } catch (error) {
+        console.debug('[CircleGesture] releasePointerCapture on cancel failed:', error);
+      }
+      activePointerIdRef.current = null;
+    }
+    
+    setIsDrawing(false);
+    setHasError(true);
+    setPoints([]);
   };
 
   // Build SVG path string from points
@@ -252,12 +345,15 @@ export function CircleGesture({
       {/* Drawing area */}
       <div
         ref={containerRef}
-        className="relative w-full h-64 bg-purple-50 dark:bg-purple-900/20 rounded-xl border-2 border-purple-300 dark:border-purple-700 overflow-hidden"
-        style={{ minHeight: "256px" }}
+        className="relative w-full h-64 bg-purple-50 dark:bg-purple-900/20 rounded-xl border-2 border-purple-300 dark:border-purple-700 overflow-hidden touch-none select-none"
+        style={{ 
+          minHeight: "256px",
+          touchAction: "none", // Prevent default touch behaviors (scroll, zoom, etc.)
+        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       >
         {/* Target area (card center) - invisible reference point */}
         <div

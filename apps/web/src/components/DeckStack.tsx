@@ -1,7 +1,8 @@
 "use client";
 
-import { forwardRef, useState, useCallback, useRef, useEffect } from "react";
+import { forwardRef, useState, useCallback, useRef, useEffect, useImperativeHandle } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useAudio } from "../hooks/useAudio";
 
 interface Tap {
   id: string;
@@ -27,6 +28,7 @@ const ROTATIONS = [-1.5, 1.2, -0.8, 1.8, -1.2, 0.9];
 export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
   ({ count, backSrc, isMyTurn = false, enabled = false, disabledReason, onFlip, onDisabledClick, helpText, topCardRef }, ref) => {
     const shouldReduceMotion = useReducedMotion();
+    const { playSfx } = useAudio();
     const [isPressed, setIsPressed] = useState(false);
     const [isHovering, setIsHovering] = useState(false);
     const [isPointerFine, setIsPointerFine] = useState(false);
@@ -34,6 +36,7 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const internalTopCardRef = useRef<HTMLDivElement>(null);
     const lastTapRef = useRef<{ id: string; x: number; y: number; time: number } | null>(null);
+    const prevCountRef = useRef<number>(count); // Track previous count to detect win
     
     // Render 4-6 card backs in a stack (not all cards)
     const stackLayers = Math.min(6, Math.max(4, Math.min(count, 6)));
@@ -193,6 +196,15 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
       }
       return "rest";
     };
+
+    // Detect win (count becomes 0)
+    useEffect(() => {
+      if (count === 0 && prevCountRef.current > 0) {
+        // Player won! Play victory sound
+        playSfx('game_win');
+      }
+      prevCountRef.current = count;
+    }, [count, playSfx]);
 
     if (count === 0) {
       return (

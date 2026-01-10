@@ -31,15 +31,10 @@ import { PileCenter } from "../components/PileCenter";
 import { FlyingCardLayer } from "../components/FlyingCardLayer";
 import { ClickablePileArea } from "../components/ClickablePileArea";
 import { WordTimeline } from "../components/WordTimeline";
+import { useAudio } from "../hooks/useAudio";
+import { useThrowRate } from "../hooks/useThrowRate";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
-
-// Sound effects hook (placeholder for future audio implementation)
-function playSfx(name: 'oops' | 'flip' | 'slap' | 'pop') {
-  // TODO: Implement audio playback
-  // Example: new Audio(`/sounds/${name}.mp3`).play();
-  console.log(`[SFX] Playing: ${name}`);
-}
 
 // Card Display Component - memoized to prevent unnecessary re-renders
 const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
@@ -116,12 +111,12 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
     return (
       <motion.div
         layoutId={`card-${card.id}`}
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.8, opacity: 0 }}
-        transition={{ duration: 0.3 }}
-        className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
-      >
+      transition={{ duration: 0.3 }}
+      className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
+    >
       {!imageError && (
         <div className="absolute inset-0 flex items-center justify-center">
           <img
@@ -421,36 +416,73 @@ export default function Home() {
   
   // Track number of flips the local player has made (for hiding hint bubble after 5 turns)
   const myFlipCountRef = useRef<number>(0);
-  
+
   // Refs for tracking previous counts to detect penalties
   const prevPileCountRef = useRef<number>(0);
   const prevMyHandCountRef = useRef<number>(0);
 
   // Track previous claim ID to detect when claim opens (for micro-anticipation)
   const prevClaimIdRef = useRef<string | null>(null);
+  
+  // Track previous phase to detect game end
+  const prevPhaseRef = useRef<string | null>(null);
+
+  // Track last local flip's flying card ID to know when to play card_throw sound
+  const lastLocalFlipCardIdRef = useRef<string | null>(null);
 
   // Anticipation key for triggering micro-anticipation animation when claim opens
   const [anticipationKey, setAnticipationKey] = useState(0);
 
+  // Audio manager hook
+  const { playSfx } = useAudio();
+  
+  // Progressive throw rate hook (for card_throw pitch)
+  const throwRate = useThrowRate(
+    roomState?.game?.pileCount ?? 0,
+    roomState?.game?.claim?.id ?? null
+  );
+  
   // Trigger impact animation (bounce + ripple)
   const triggerImpact = useCallback(() => {
     setImpactKey((prev) => prev + 1);
+    // NOTE: Slap sound removed - card_throw sound is played in handlePileImpact instead
+    // If you want to add slap.wav, uncomment: playSfx('slap');
   }, []);
 
   // Trigger anticipation animation when claim opens
   const triggerAnticipation = useCallback(() => {
     setAnticipationKey((prev) => prev + 1);
+    // NOTE: claim_open.wav does not exist - removed sound effect
+    // If you want to add claim_open.wav, uncomment: playSfx('claim_open');
   }, []);
 
   // Handle impact callback (triggered by FlyingCardLayer when card lands)
-  const handlePileImpact = useCallback(() => {
+  const handlePileImpact = useCallback((cardId?: string) => {
     triggerImpact();
-  }, [triggerImpact]);
+    
+    // If this impact is from our last local flip, play card_throw sound
+    if (cardId && cardId === lastLocalFlipCardIdRef.current) {
+      const currentRate = throwRate.getCurrentRate();
+      const pileCount = roomState?.game?.pileCount ?? 0;
+      
+      // Debug log
+      console.log(`[CardThrow] Pile count: ${pileCount}, rate: ${currentRate.toFixed(3)}`);
+      
+      // Use 'rate' parameter for explicit playbackRate control
+      playSfx('card_throw', { rate: currentRate });
+      // Clear the reference after playing
+      lastLocalFlipCardIdRef.current = null;
+    }
+  }, [triggerImpact, playSfx, throwRate]);
 
   // Handle flying card completion
   const handleFlyingCardComplete = useCallback((id: string) => {
     setFlyingCards((prev) => prev.filter((card) => card.id !== id));
-    // Impact is triggered by onImpact callback in FlyingCardLayer
+    // Impact is triggered by onImpact callback in FlyingCardLayer before this is called
+    // Clear reference if this was our tracked card and it completed without impact (shouldn't happen)
+    if (id === lastLocalFlipCardIdRef.current) {
+      lastLocalFlipCardIdRef.current = null;
+    }
   }, []);
   
   // Fallback: detect pileCount increase and trigger impact if no flying card triggered it
@@ -569,7 +601,7 @@ export default function Home() {
       setShakeKey((prev) => prev + 1);
       setScreenShakeKey((prev) => prev + 1);
       
-      // Play sound effect (placeholder)
+      // Play sound effect
       playSfx('oops');
       
       // Hide "Oops!" toast after ~900ms (display time + exit animation)
@@ -594,8 +626,9 @@ export default function Home() {
       // Success! Player claimed successfully without receiving cards
       setGoodKey((prev) => prev + 1);
       
-      // Play sound effect (placeholder)
-      playSfx('pop');
+      // Play sound effect with slight pitch variation for variety
+      const pitch = 0.97 + Math.random() * 0.06; // Random between 0.97-1.03
+      playSfx('turn_win', { pitch });
       
       // Hide "¡Bien!" toast after ~900ms (display time + exit animation)
       setTimeout(() => {
@@ -621,7 +654,7 @@ export default function Home() {
     // Update hand/pile counts for next comparison cycle
     prevMyHandCountRef.current = myHandCount;
     prevPileCountRef.current = pileCount;
-  }, [roomState?.game, socketId, slapIntentAt, isAttemptingClaim]);
+  }, [roomState?.game, socketId, slapIntentAt, isAttemptingClaim, playSfx]);
 
   // Clear slap intent after 2000ms if not consumed (increased to account for claim resolution time)
   useEffect(() => {
@@ -680,8 +713,9 @@ export default function Home() {
           const backSrc = "/assets/card-back.png"; // Default back image path - adjust if needed
           
           // For now, always use BACK (you can enhance this to show front if needed)
+          const flyingCardId = `flying-${Date.now()}-${Math.random()}`;
           const flyingCard = {
-            id: `flying-${Date.now()}-${Math.random()}`,
+            id: flyingCardId,
             from: fromRect,
             to: toRect,
             kind: "BACK" as const,
@@ -689,6 +723,11 @@ export default function Home() {
           };
 
           setFlyingCards((prev) => [...prev, flyingCard]);
+          
+          // Track this card if it's our flip (we'll play card_throw when it lands)
+          if (isMyFlip) {
+            lastLocalFlipCardIdRef.current = flyingCardId;
+          }
         }
       }
     }
@@ -698,7 +737,7 @@ export default function Home() {
       topCardId: currentTopCardId,
       pileCount: currentPileCount,
     };
-  }, [roomState?.game, socketId, triggerImpact, flyingCards.length]);
+  }, [roomState?.game, socketId, triggerImpact, flyingCards.length, playSfx]);
 
   // Reset flip count when game starts or pile is empty (new game)
   useEffect(() => {
@@ -728,6 +767,26 @@ export default function Home() {
     // Update ref for next comparison
     prevClaimIdRef.current = claimId;
   }, [roomState?.game, triggerAnticipation]);
+
+  // Detect game end and play appropriate sound
+  useEffect(() => {
+    if (roomState?.phase === "ENDED" && prevPhaseRef.current === "IN_GAME") {
+      // Game just ended
+      if (socketId && roomState.game) {
+        const myHandCount = roomState.game.handCounts[socketId] ?? 0;
+        const myStatus = roomState.game.playerStatuses?.[socketId] || "ACTIVE";
+        
+        // If player is OUT and has cards, they lost
+        // Note: If player has 0 cards, DeckStack already plays game_win, so we don't double-play here
+        if (myStatus === "OUT" && myHandCount > 0) {
+          // Player was eliminated (lost)
+          playSfx('game_lose');
+        }
+        // Note: game_win is already played by DeckStack when count becomes 0
+      }
+    }
+    prevPhaseRef.current = roomState?.phase || null;
+  }, [roomState?.phase, socketId, roomState?.game, playSfx]);
 
   // Check if current player is host
   const isHost = roomState && socketId && roomState.hostId === socketId;
@@ -1052,18 +1111,6 @@ export default function Home() {
                   🎮 Game In Progress
                 </h2>
 
-                {/* Current Turn */}
-                <div className="mb-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800">
-                  <p className="text-lg font-semibold text-indigo-900 dark:text-indigo-100 mb-1">
-                    Turno de:{" "}
-                    {
-                      roomState.players.find(
-                        (p) => p.id === roomState.game?.turnPlayerId
-                      )?.name
-                    }
-                  </p>
-                </div>
-
                 {/* Word Timeline - Sequence visualization */}
                 <WordTimeline
                   spokenWord={roomState.game.spokenWord}
@@ -1139,7 +1186,7 @@ export default function Home() {
                           </motion.div>
                         )}
                       </AnimatePresence>
-                    </div>
+                </div>
                   );
                 })()}
 
@@ -1246,7 +1293,7 @@ export default function Home() {
                     </ClickablePileArea>
 
                   </PileCenter>
-                </div>
+                          </div>
 
 
                 {/* Player Status Indicator */}
