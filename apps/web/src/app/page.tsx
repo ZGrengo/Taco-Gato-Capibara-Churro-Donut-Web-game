@@ -426,6 +426,8 @@ export default function Home() {
   
   // Track previous phase to detect game end
   const prevPhaseRef = useRef<string | null>(null);
+  // Track previous phase for music control
+  const prevPhaseForMusicRef = useRef<string | null>(null);
 
   // Track last local flip's flying card ID to know when to play card_throw sound
   const lastLocalFlipCardIdRef = useRef<string | null>(null);
@@ -434,7 +436,7 @@ export default function Home() {
   const [anticipationKey, setAnticipationKey] = useState(0);
 
   // Audio manager hook
-  const { playSfx } = useAudio();
+  const { playSfx, playMusic, stopMusic, toggleMute, preferences, isMounted: isAudioMounted } = useAudio();
   
   // Progressive throw rate hook (for card_throw pitch)
   const throwRate = useThrowRate(
@@ -768,6 +770,26 @@ export default function Home() {
     prevClaimIdRef.current = claimId;
   }, [roomState?.game, triggerAnticipation]);
 
+  // Play background music when game starts (only if music is already enabled)
+  // Note: Music can now be played manually via button regardless of game state
+  // We don't stop music when game ends - let user control it manually
+  useEffect(() => {
+    const currentPhase = roomState?.phase || null;
+    const prevPhase = prevPhaseForMusicRef.current;
+    
+    if (currentPhase === "IN_GAME" && prevPhase !== "IN_GAME") {
+      // Game just started - play music if not muted and not already playing
+      if (!preferences.muted) {
+        playMusic('thinkfast', true);
+      }
+    }
+    // Note: We don't stop music when game ends - user controls it via button
+    // This allows music to continue playing even between games if user wants
+    
+    // Update ref for next comparison
+    prevPhaseForMusicRef.current = currentPhase;
+  }, [roomState?.phase, preferences.muted, playMusic]);
+
   // Detect game end and play appropriate sound
   useEffect(() => {
     if (roomState?.phase === "ENDED" && prevPhaseRef.current === "IN_GAME") {
@@ -832,8 +854,8 @@ export default function Home() {
             Real-time multiplayer experience
           </p>
 
-          {/* Connection Status */}
-          <div className="mb-6">
+          {/* Connection Status and Music Toggle */}
+          <div className="mb-6 flex items-center justify-between">
             <div
               className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                 connected
@@ -848,6 +870,52 @@ export default function Home() {
               />
               {connected ? "Connected" : "Disconnected"}
             </div>
+
+            {/* Music Toggle Button - Only render after hydration to avoid SSR mismatch */}
+            {isAudioMounted ? (
+              <button
+                onClick={() => {
+                  const wasMuted = preferences.muted;
+                  const newMutedState = toggleMute();
+                  
+                  // If user just unmuted, play music regardless of game state
+                  if (wasMuted && !newMutedState) {
+                    // User unmuted - play music immediately
+                    // Use setTimeout to ensure AudioManager state is updated after toggleMute
+                    setTimeout(() => {
+                      playMusic('thinkfast', true); // Force play even if muted check fails
+                    }, 50);
+                  } else if (!wasMuted && newMutedState) {
+                    // User muted - stop music
+                    stopMusic();
+                  }
+                }}
+                className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                  preferences.muted
+                    ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    : "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+                }`}
+                title={preferences.muted ? "Activar música" : "Desactivar música"}
+              >
+                {preferences.muted ? (
+                  <>
+                    <span className="mr-2">🔇</span>
+                    <span>Música OFF</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="mr-2">🔊</span>
+                    <span>Música ON</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              // Placeholder during SSR to maintain layout
+              <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                <span className="mr-2">🔇</span>
+                <span>Música OFF</span>
+              </div>
+            )}
           </div>
 
           {/* Player Name Input */}

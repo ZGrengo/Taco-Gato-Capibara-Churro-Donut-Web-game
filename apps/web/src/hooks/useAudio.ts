@@ -10,32 +10,49 @@ import { AudioManager, type SfxName, type MusicName, type SfxOptions } from '../
  * if user has already interacted with the page.
  */
 export function useAudio() {
-  const [isUnlocked, setIsUnlocked] = useState(() => AudioManager.isUnlocked());
-  const [preferences, setPreferences] = useState(() => AudioManager.getPreferences());
+  // Use default preferences for SSR to avoid hydration mismatch
+  // Will be updated on client mount
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return AudioManager.isUnlocked();
+  });
+  
+  // Initialize with default preferences for SSR compatibility
+  const [preferences, setPreferences] = useState(() => {
+    if (typeof window === 'undefined') {
+      return { sfxVolume: 0.7, musicVolume: 0.3, muted: true };
+    }
+    return AudioManager.getPreferences();
+  });
+  
+  // Track if component is mounted to avoid hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Update preferences on client mount (after hydration)
+  useEffect(() => {
+    setIsMounted(true);
+    const currentPrefs = AudioManager.getPreferences();
+    setPreferences(currentPrefs);
+    setIsUnlocked(AudioManager.isUnlocked());
+  }, []);
 
   // Listen for audio unlock
   useEffect(() => {
-    if (isUnlocked) return;
+    if (isUnlocked || !isMounted) return;
     
     const unsubscribe = AudioManager.onUnlock(() => {
       setIsUnlocked(true);
     });
     
     return unsubscribe;
-  }, [isUnlocked]);
-
-  // Update preferences when they change (useful for UI that displays current values)
-  useEffect(() => {
-    const currentPrefs = AudioManager.getPreferences();
-    setPreferences(currentPrefs);
-  }, []);
+  }, [isUnlocked, isMounted]);
 
   const playSfx = useCallback((name: SfxName, options?: SfxOptions) => {
     AudioManager.playSfx(name, options);
   }, []);
 
-  const playMusic = useCallback((name: MusicName) => {
-    AudioManager.playMusic(name);
+  const playMusic = useCallback((name: MusicName, force: boolean = false) => {
+    AudioManager.playMusic(name, force);
   }, []);
 
   const stopMusic = useCallback(() => {
@@ -76,6 +93,7 @@ export function useAudio() {
     // State
     isUnlocked,
     preferences,
+    isMounted, // Expose mounted state to avoid hydration issues
   };
 }
 

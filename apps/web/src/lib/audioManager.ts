@@ -21,7 +21,8 @@ export type SfxName =
 
 export type MusicName =
   | 'background'      // Main background music
-  | 'menu';          // Menu music
+  | 'menu'           // Menu music
+  | 'thinkfast';     // In-game music (thinkfast.mp3)
 
 interface SfxOptions {
   pitch?: number;      // Pitch variation (0.5 - 2.0, default 1.0) - also accepts "rate" for backwards compatibility
@@ -38,7 +39,7 @@ interface AudioPreferences {
 const DEFAULT_PREFERENCES: AudioPreferences = {
   sfxVolume: 0.7,
   musicVolume: 0.3,
-  muted: false,
+  muted: true, // Music muted by default
 };
 
 const STORAGE_KEY = 'taco-game-audio-prefs';
@@ -207,8 +208,11 @@ class AudioManagerClass {
    */
   private getMusicAudio(name: MusicName): HTMLAudioElement | null {
     if (!this.musicCache.has(name)) {
+      // Special handling for thinkfast: it's in /audio/ directly, not /audio/music/
+      const basePath = name === 'thinkfast' ? '/audio' : '/audio/music';
+      
       // Try WAV first (preferred format)
-      const wavAudio = new Audio(`/audio/music/${name}.wav`);
+      const wavAudio = new Audio(`${basePath}/${name}.wav`);
       wavAudio.preload = 'auto';
       wavAudio.loop = true; // Music typically loops
       
@@ -227,7 +231,7 @@ class AudioManagerClass {
         if (!audioLoaded) {
           console.debug(`[AudioManager] WAV not found for music ${name}, trying MP3 fallback...`);
           // Try MP3 as fallback
-          const mp3Audio = new Audio(`/audio/music/${name}.mp3`);
+          const mp3Audio = new Audio(`${basePath}/${name}.mp3`);
           mp3Audio.preload = 'auto';
           mp3Audio.loop = true;
           
@@ -241,7 +245,7 @@ class AudioManagerClass {
           
           mp3Audio.addEventListener('error', () => {
             if (!audioLoaded) {
-              console.debug(`[AudioManager] Music file not found: ${name}.wav or ${name}.mp3 (this is expected until audio files are added)`);
+              console.debug(`[AudioManager] Music file not found: ${basePath}/${name}.wav or ${basePath}/${name}.mp3 (this is expected until audio files are added)`);
               // Cache a dummy audio element to prevent repeated attempts
               this.musicCache.set(name, mp3Audio);
             }
@@ -349,22 +353,30 @@ class AudioManagerClass {
 
   /**
    * Play background music (stops current music if playing)
+   * Note: This method respects the muted state, so ensure muted is false before calling
    */
-  playMusic(name: MusicName): void {
+  playMusic(name: MusicName, force: boolean = false): void {
     if (!this.audioUnlocked) {
       // Try to unlock on demand
       this.unlockAudio();
+      // If still not unlocked, silently ignore (audio will play on next interaction)
+      if (!this.audioUnlocked) {
+        return;
+      }
     }
     
     // Stop current music if playing
     this.stopMusic();
     
-    if (this.preferences.muted) {
+    // Check muted state (unless force is true)
+    if (!force && this.preferences.muted) {
       return;
     }
 
     const audio = this.getMusicAudio(name);
-    if (!audio) return;
+    if (!audio) {
+      return;
+    }
 
     try {
       audio.volume = this.preferences.musicVolume;
