@@ -135,6 +135,7 @@ interface InternalGameState {
   wordIndex: number;
   statuses: Record<string, "ACTIVE" | "PENDING_EXIT" | "OUT">; // playerId -> status
   claim?: ClaimWindow;
+  lastFlipPlayerId?: string; // Player who performed the last flip (for UI animations)
 }
 
 /**
@@ -401,6 +402,7 @@ export class RoomManager {
       handCounts,
       playerStatuses,
       claim,
+      lastFlipPlayerId: internalGame.lastFlipPlayerId,
     };
   }
 
@@ -737,6 +739,9 @@ export class RoomManager {
     }
 
     internalGame.pile.push(card);
+    
+    // Store who performed this flip (for UI animations)
+    internalGame.lastFlipPlayerId = playerId;
 
     // Calculate spoken word for this flip based on pile size BEFORE flip
     // This ensures the word matches what was "said" when flipping

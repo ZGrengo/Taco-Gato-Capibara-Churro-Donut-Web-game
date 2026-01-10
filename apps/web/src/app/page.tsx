@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import {
   EVENTS,
@@ -26,6 +26,10 @@ import { motion } from "framer-motion";
 import { ClickFrenzyGesture } from "../components/ClickFrenzyGesture";
 import { BubblesGesture } from "../components/BubblesGesture";
 import { CircleGesture } from "../components/CircleGesture";
+import { DeckStack } from "../components/DeckStack";
+import { PileCenter } from "../components/PileCenter";
+import { FlyingCardLayer } from "../components/FlyingCardLayer";
+import { ClickablePileArea } from "../components/ClickablePileArea";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
@@ -152,6 +156,27 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [isAttemptingClaim, setIsAttemptingClaim] = useState(false);
   const [currentClaimId, setCurrentClaimId] = useState<string | null>(null);
+  
+  // Refs for animation calculations
+  const deckRef = useRef<HTMLDivElement>(null);
+  const pileRef = useRef<HTMLDivElement>(null);
+  const playerRowRefs = useRef<Record<string, HTMLDivElement>>({});
+  
+  // Flying cards state
+  const [flyingCards, setFlyingCards] = useState<Array<{
+    id: string;
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    kind: "BACK" | "FRONT";
+    frontSrc?: string;
+    backSrc: string;
+  }>>([]);
+  
+  // Previous game state for detecting flips
+  const prevGameStateRef = useRef<{
+    topCardId?: string;
+    pileCount: number;
+  }>({ pileCount: 0 });
 
   useEffect(() => {
     const newSocket = io(SOCKET_URL, {
@@ -264,6 +289,9 @@ export default function Home() {
         : "ACTIVE";
     if (myStatus === "OUT") return;
 
+    // Mark slap intent timestamp
+    setSlapIntentAt(Date.now());
+
     // If gesture is active, don't handle click here (let gesture handle it)
     if (isAttemptingClaim && roomState.game.claim?.gestureType) {
       // For CLICK_FRENZY, the gesture overlay will handle the click
@@ -309,6 +337,183 @@ export default function Home() {
     handleClaim(roomState.game.claim.id);
     setIsAttemptingClaim(false);
   };
+
+  // Calculate center point of an element
+  const getElementCenter = (element: HTMLElement | null): { x: number; y: number } | null => {
+    if (!element) return null;
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  };
+
+  // Impact key state for triggering pile animations
+  const [impactKey, setImpactKey] = useState(0);
+  
+  // False slap detection states
+  const [slapIntentAt, setSlapIntentAt] = useState<number | null>(null);
+  const [oopsKey, setOopsKey] = useState(0);
+  const [shakeKey, setShakeKey] = useState(0);
+  
+  // Refs for tracking previous counts to detect penalties
+  const prevPileCountRef = useRef<number>(0);
+  const prevMyHandCountRef = useRef<number>(0);
+  
+  // Trigger impact animation (bounce + ripple)
+  const triggerImpact = useCallback(() => {
+    setImpactKey((prev) => prev + 1);
+  }, []);
+
+  // Handle impact callback (triggered by FlyingCardLayer when card lands)
+  const handlePileImpact = useCallback(() => {
+    triggerImpact();
+  }, [triggerImpact]);
+
+  // Handle flying card completion
+  const handleFlyingCardComplete = useCallback((id: string) => {
+    setFlyingCards((prev) => prev.filter((card) => card.id !== id));
+    // Impact is triggered by onImpact callback in FlyingCardLayer
+  }, []);
+  
+  // Fallback: detect pileCount increase and trigger impact if no flying card triggered it
+  useEffect(() => {
+    if (!roomState?.game) return;
+    
+    const currentPileCount = roomState.game.pileCount;
+    const prevPileCount = prevGameStateRef.current.pileCount;
+    
+    // If pileCount increased but we didn't detect a flying card (edge case)
+    // Trigger impact as fallback
+    if (currentPileCount > prevPileCount && currentPileCount > 0) {
+      // Small delay to allow flying card to trigger first if it exists
+      const timer = setTimeout(() => {
+        // Only trigger if no flying cards are active (fallback case)
+        if (flyingCards.length === 0) {
+          triggerImpact();
+        }
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [roomState?.game, triggerImpact, flyingCards.length]);
+
+  // Detect false slap (penalty) - when player receives cards after clicking pile
+  useEffect(() => {
+    if (!roomState?.game || !socketId) {
+      // Update refs even if game is not available
+      if (roomState?.game && socketId) {
+        const game = roomState.game;
+        prevMyHandCountRef.current = game.handCounts[socketId] ?? 0;
+        prevPileCountRef.current = game.pileCount;
+      }
+      return;
+    }
+
+    const game = roomState.game;
+    const myHandCount = game.handCounts[socketId] ?? 0;
+    const pileCount = game.pileCount;
+
+    // Check if we have an active slap intent
+    if (slapIntentAt !== null) {
+      const timeSinceSlap = Date.now() - slapIntentAt;
+
+      // Only check within the 1500ms window
+      if (timeSinceSlap < 1500) {
+        // Check for penalty condition: hand count increased AND pile count decreased
+        const handCountIncreased = myHandCount > prevMyHandCountRef.current;
+        const pileCountDecreased = pileCount < prevPileCountRef.current;
+
+        if (handCountIncreased && pileCountDecreased) {
+          // False slap detected! Trigger animations
+          setOopsKey((prev) => prev + 1);
+          setShakeKey((prev) => prev + 1);
+          setSlapIntentAt(null); // Consume the intent
+          
+          // Hide "Oops!" toast after 800ms (display time) + 600ms (exit animation) = 1400ms
+          // This allows the exit animation to complete
+          setTimeout(() => {
+            setOopsKey(0);
+          }, 1400);
+        }
+      }
+    }
+
+    // Update refs for next comparison
+    prevMyHandCountRef.current = myHandCount;
+    prevPileCountRef.current = pileCount;
+  }, [roomState?.game, socketId, slapIntentAt]);
+
+  // Clear slap intent after 1500ms if not consumed
+  useEffect(() => {
+    if (slapIntentAt === null) return;
+
+    const timer = setTimeout(() => {
+      setSlapIntentAt(null);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [slapIntentAt]);
+
+  // Detect flips and trigger flying card animation
+  useEffect(() => {
+    if (!roomState?.game || !socketId) return;
+
+    const game = roomState.game;
+    const currentTopCardId = game.topCard?.id;
+    const currentPileCount = game.pileCount;
+    const prevState = prevGameStateRef.current;
+
+    // Check if a flip occurred (pileCount increased and topCard changed)
+    if (
+      currentPileCount > prevState.pileCount &&
+      currentTopCardId &&
+      currentTopCardId !== prevState.topCardId
+    ) {
+      // Determine who flipped
+      const flipPlayerId = game.lastFlipPlayerId;
+      
+      if (flipPlayerId) {
+        // Get source rect (deck if it's me, player row if it's someone else)
+        let fromRect: { x: number; y: number } | null = null;
+        
+        if (flipPlayerId === socketId) {
+          // My flip - use deck
+          fromRect = getElementCenter(deckRef.current);
+        } else {
+          // Other player's flip - use their row
+          const playerRow = playerRowRefs.current[flipPlayerId];
+          fromRect = getElementCenter(playerRow);
+        }
+
+        // Get destination rect (pile center)
+        const toRect = getElementCenter(pileRef.current);
+
+        if (fromRect && toRect) {
+          // Determine card kind and source
+          const isMyFlip = flipPlayerId === socketId;
+          const backSrc = "/assets/card-back.png"; // Default back image path - adjust if needed
+          
+          // For now, always use BACK (you can enhance this to show front if needed)
+          const flyingCard = {
+            id: `flying-${Date.now()}-${Math.random()}`,
+            from: fromRect,
+            to: toRect,
+            kind: "BACK" as const,
+            backSrc,
+          };
+
+          setFlyingCards((prev) => [...prev, flyingCard]);
+        }
+      }
+    }
+
+    // Update previous state
+    prevGameStateRef.current = {
+      topCardId: currentTopCardId,
+      pileCount: currentPileCount,
+    };
+  }, [roomState?.game, socketId]);
 
   // Check if current player is host
   const isHost = roomState && socketId && roomState.hostId === socketId;
@@ -612,18 +817,32 @@ export default function Home() {
                   )}
                 </div>
 
+                {/* Deck Stack - My Deck */}
+                {socketId && roomState.game.handCounts && (
+                  <div className="mb-6 flex justify-center">
+                    <DeckStack
+                      ref={deckRef}
+                      count={roomState.game.handCounts[socketId] || 0}
+                      backSrc="/assets/card-back.png"
+                    />
+                  </div>
+                )}
+
                 {/* Pile Display - Clickable */}
                 <div className="mb-6 flex flex-col items-center">
-                  <div className="relative w-full max-w-sm">
-                    {/* Pile container - clickable */}
-                    <div
+                  <PileCenter
+                    ref={pileRef}
+                    pileCount={roomState.game.pileCount}
+                    topCard={roomState.game.topCard}
+                    backSrc="/assets/card-back.png"
+                    impactKey={impactKey}
+                    shakeKey={shakeKey}
+                    oopsKey={oopsKey}
+                  >
+                    <ClickablePileArea
                       onClick={handlePileClick}
-                      className={`relative select-none ${
-                        isAttemptingClaim && roomState.game.claim?.gestureType
-                          ? "cursor-default"
-                          : "cursor-pointer"
-                      }`}
-                      style={{ touchAction: "manipulation" }}
+                      isAttemptingClaim={isAttemptingClaim}
+                      hasGesture={!!roomState.game.claim?.gestureType}
                     >
                       {roomState.game.topCard ? (
                         <CardDisplay card={roomState.game.topCard} />
@@ -705,7 +924,7 @@ export default function Home() {
                           </p>
                         </div>
                       )}
-                    </div>
+                    </ClickablePileArea>
 
                     {/* Claim indicator text - outside clickable container */}
                     {roomState.game.claim &&
@@ -735,11 +954,6 @@ export default function Home() {
                         );
                       })()}
 
-                    {/* Pile count - with extra margin to avoid overlap */}
-                    <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
-                      <p>Pila: {roomState.game.pileCount} cartas</p>
-                    </div>
-
                     {/* Claim countdown - subtle display */}
                     {roomState.game.claim && (
                       <div className="mt-2 text-center">
@@ -757,7 +971,7 @@ export default function Home() {
                         )}
                       </div>
                     )}
-                  </div>
+                  </PileCenter>
                 </div>
 
 
@@ -859,6 +1073,11 @@ export default function Home() {
                       return (
                         <motion.div
                           key={player.id}
+                          ref={(el) => {
+                            if (el) {
+                              playerRowRefs.current[player.id] = el;
+                            }
+                          }}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           className={`flex items-center justify-between p-3 rounded-lg ${
@@ -935,6 +1154,15 @@ export default function Home() {
           )}
         </motion.div>
       </div>
+      
+      {/* Flying Card Layer - renders on top of everything */}
+      {roomState?.phase === "IN_GAME" && (
+        <FlyingCardLayer
+          flyingCards={flyingCards}
+          onCardComplete={handleFlyingCardComplete}
+          onImpact={handlePileImpact}
+        />
+      )}
     </main>
   );
 }

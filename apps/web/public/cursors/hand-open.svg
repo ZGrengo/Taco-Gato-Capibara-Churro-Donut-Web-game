@@ -1,0 +1,6 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Hand open cursor - pointing finger -->
+  <path d="M24 4C22.5 4 21 5 21 6.5V14H18C16.5 14 15 15.5 15 17V27C15 28.5 16.5 30 18 30H21V38C21 39.5 22.5 41 24 41C25.5 41 27 39.5 27 38V30H30C31.5 30 33 28.5 33 27V17C33 15.5 31.5 14 30 14H27V6.5C27 5 25.5 4 24 4Z" fill="white" stroke="#333" stroke-width="1.5"/>
+  <path d="M24 4L24 14" stroke="#333" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="24" cy="4" r="2" fill="#333"/>
+</svg>

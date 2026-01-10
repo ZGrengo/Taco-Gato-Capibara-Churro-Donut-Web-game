@@ -110,6 +110,7 @@ export const GameStateSchema = z.object({
   handCounts: z.record(z.string(), z.number()), // Record<playerId, count>
   playerStatuses: z.record(z.string(), PlayerGameStatusSchema), // Record<playerId, status>
   claim: ClaimWindowPublicSchema.optional(),
+  lastFlipPlayerId: z.string().optional(), // Player who performed the last flip (for UI animations)
 });
 
 // Room state (server -> client)
