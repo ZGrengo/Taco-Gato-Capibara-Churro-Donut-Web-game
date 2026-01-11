@@ -53,12 +53,13 @@ export interface Room {
 /**
  * Helper to create a player
  */
-export function createPlayer(id: string, name: string): Player {
+export function createPlayer(id: string, name: string, isBot: boolean = false): Player {
   return {
     id,
     name,
     joinedAt: Date.now(),
     ready: false,
+    isBot,
   };
 }
 

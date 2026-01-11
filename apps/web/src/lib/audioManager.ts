@@ -33,13 +33,17 @@ interface SfxOptions {
 interface AudioPreferences {
   sfxVolume: number;   // 0.0 - 1.0
   musicVolume: number; // 0.0 - 1.0
-  muted: boolean;
+  muted: boolean;       // Legacy: controls music (kept for backwards compatibility)
+  sfxMuted: boolean;   // SFX muted state (separate from music)
+  musicMuted: boolean; // Music muted state (separate from SFX)
 }
 
 const DEFAULT_PREFERENCES: AudioPreferences = {
   sfxVolume: 0.7,
   musicVolume: 0.3,
-  muted: true, // Music muted by default
+  muted: true, // Legacy: Music muted by default
+  sfxMuted: false, // SFX enabled by default
+  musicMuted: true, // Music muted by default
 };
 
 const STORAGE_KEY = 'taco-game-audio-prefs';
@@ -120,6 +124,14 @@ class AudioManagerClass {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<AudioPreferences>;
+        // Migrate old 'muted' to 'musicMuted' if needed
+        if (parsed.muted !== undefined && parsed.musicMuted === undefined) {
+          parsed.musicMuted = parsed.muted;
+        }
+        // Initialize sfxMuted if not present
+        if (parsed.sfxMuted === undefined) {
+          parsed.sfxMuted = false; // Default to enabled
+        }
         this.preferences = {
           ...DEFAULT_PREFERENCES,
           ...parsed,
@@ -283,7 +295,7 @@ class AudioManagerClass {
       }
     }
     
-    if (this.preferences.muted) {
+    if (this.preferences.sfxMuted) {
       return;
     }
 
@@ -297,7 +309,6 @@ class AudioManagerClass {
       
       // Debug log for pitch changes (can be removed later)
       if (rate !== 1.0) {
-        console.log(`[AudioManager] Playing "${name}" with rate: ${clampedRate.toFixed(3)} (requested: ${rate.toFixed(3)})`);
       }
       
       // Clone the audio element to allow overlapping sounds
@@ -375,7 +386,7 @@ class AudioManagerClass {
     this.stopMusic();
     
     // Check muted state (unless force is true)
-    if (!force && this.preferences.muted) {
+    if (!force && this.preferences.musicMuted) {
       return;
     }
 
@@ -470,13 +481,13 @@ class AudioManagerClass {
   }
 
   /**
-   * Toggle mute state
+   * Toggle mute state (legacy - controls music)
    */
   toggleMute(): boolean {
     this.preferences.muted = !this.preferences.muted;
+    this.preferences.musicMuted = this.preferences.muted; // Keep in sync
     this.savePreferences();
     
-    // Stop music if muting
     if (this.preferences.muted) {
       this.stopMusic();
     }
@@ -485,10 +496,56 @@ class AudioManagerClass {
   }
 
   /**
-   * Set mute state directly
+   * Set mute state (legacy - controls music)
    */
   setMuted(muted: boolean): void {
     this.preferences.muted = muted;
+    this.preferences.musicMuted = muted; // Keep in sync
+    this.savePreferences();
+    
+    if (muted) {
+      this.stopMusic();
+    }
+  }
+
+  /**
+   * Toggle SFX mute state
+   */
+  toggleSfxMute(): boolean {
+    this.preferences.sfxMuted = !this.preferences.sfxMuted;
+    this.savePreferences();
+    return this.preferences.sfxMuted;
+  }
+
+  /**
+   * Set SFX mute state
+   */
+  setSfxMuted(muted: boolean): void {
+    this.preferences.sfxMuted = muted;
+    this.savePreferences();
+  }
+
+  /**
+   * Toggle music mute state
+   */
+  toggleMusicMute(): boolean {
+    this.preferences.musicMuted = !this.preferences.musicMuted;
+    this.preferences.muted = this.preferences.musicMuted; // Keep legacy in sync
+    this.savePreferences();
+    
+    if (this.preferences.musicMuted) {
+      this.stopMusic();
+    }
+    
+    return this.preferences.musicMuted;
+  }
+
+  /**
+   * Set music mute state
+   */
+  setMusicMuted(muted: boolean): void {
+    this.preferences.musicMuted = muted;
+    this.preferences.muted = muted; // Keep legacy in sync
     this.savePreferences();
     
     if (muted) {

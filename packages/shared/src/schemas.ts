@@ -13,6 +13,11 @@ export const RoomCreateSchema = z.object({
   name: z.string().min(1).max(50),
 });
 
+// Solo room creation payload (client -> server)
+export const RoomCreateSoloSchema = z.object({
+  name: z.string().min(1).max(50),
+});
+
 // Room join payload (client -> server)
 export const RoomJoinSchema = z.object({
   code: z.string().length(5),
@@ -42,6 +47,7 @@ export const PlayerSchema = z.object({
   name: z.string(),
   joinedAt: z.number(),
   ready: z.boolean(),
+  isBot: z.boolean().optional().default(false),
 });
 
 // Player game status (during IN_GAME phase)

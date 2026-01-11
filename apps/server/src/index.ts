@@ -5,6 +5,7 @@ import cors from "cors";
 import {
   EVENTS,
   RoomCreateSchema,
+  RoomCreateSoloSchema,
   RoomJoinSchema,
   ReadyToggleSchema,
   StartGameSchema,
@@ -12,6 +13,7 @@ import {
   ClaimAttemptSchema,
 } from "@acme/shared";
 import { RoomManager } from "./room-manager";
+import { botManager } from "./bot-manager";
 
 const PORT = process.env.PORT || 3001;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
@@ -57,6 +59,25 @@ io.on("connection", (socket) => {
       createdAt: room.createdAt,
       game: gameState,
     });
+
+    // Process bot actions after state update
+    if (room.phase === "IN_GAME") {
+      botManager.processBotActions(
+        room,
+        (botId: string) => {
+          const botRoom = roomManager.flipCard(botId);
+          if (botRoom) {
+            emitRoomState(botRoom.code);
+          }
+        },
+        (botId: string, claimId?: string) => {
+          const botRoom = roomManager.claimAttempt(botId, claimId);
+          if (botRoom) {
+            emitRoomState(botRoom.code);
+          }
+        }
+      );
+    }
   };
 
   // Handle room creation
@@ -76,6 +97,39 @@ io.on("connection", (socket) => {
     emitRoomState(room.code);
 
     console.log(`Room created: ${room.code} by ${socket.id}`);
+  });
+
+  // Handle solo room creation
+  socket.on(EVENTS.ROOM_CREATE_SOLO, (payload) => {
+    const result = RoomCreateSoloSchema.safeParse(payload);
+    if (!result.success) {
+      socket.emit(EVENTS.ERROR, {
+        message: "Invalid payload: " + result.error.message,
+      } satisfies { message: string });
+      return;
+    }
+
+    const { name } = result.data;
+    const room = roomManager.createSoloRoom(name, socket.id, botManager);
+    socket.join(room.code);
+
+    // Auto-start the game for solo mode
+    const startedRoom = roomManager.startGame(socket.id);
+    if (startedRoom) {
+      // Emit state immediately, then process bots after a small delay
+      emitRoomState(startedRoom.code);
+      // Small delay to ensure game state is fully initialized before processing bots
+      setTimeout(() => {
+        const room = roomManager.getRoom(startedRoom.code);
+        if (room && room.phase === "IN_GAME") {
+          emitRoomState(startedRoom.code);
+        }
+      }, 100);
+      console.log(`Solo room created and game started: ${startedRoom.code} by ${socket.id}`);
+    } else {
+      emitRoomState(room.code);
+      console.log(`Solo room created: ${room.code} by ${socket.id}`);
+    }
   });
 
   // Handle room join
@@ -200,6 +254,13 @@ io.on("connection", (socket) => {
 
     emitRoomState(room.code);
     console.log(`Player ${socket.id} flipped a card in room ${room.code}`);
+    
+    // Process bot actions after flip
+    if (room.phase === "IN_GAME") {
+      setTimeout(() => {
+        emitRoomState(room.code);
+      }, 100);
+    }
   });
 
   // Handle claim attempt
@@ -227,20 +288,30 @@ io.on("connection", (socket) => {
 
   // Handle room leave
   socket.on(EVENTS.ROOM_LEAVE, () => {
-    const room = roomManager.leaveRoom(socket.id);
-    if (room) {
-      socket.leave(room.code);
-      emitRoomState(room.code);
+    const room = roomManager.getPlayerRoom(socket.id);
+    const roomCode = room?.code;
+    const leftRoom = roomManager.leaveRoom(socket.id);
+    if (roomCode && room) {
+      botManager.cleanup(roomCode, room);
+    }
+    if (leftRoom) {
+      socket.leave(leftRoom.code);
+      emitRoomState(leftRoom.code);
     }
   });
 
   // Handle disconnection
   socket.on("disconnect", () => {
     console.log(`Client disconnected: ${socket.id}`);
-    const room = roomManager.leaveRoom(socket.id);
-    if (room) {
-      socket.leave(room.code);
-      emitRoomState(room.code);
+    const room = roomManager.getPlayerRoom(socket.id);
+    const roomCode = room?.code;
+    const leftRoom = roomManager.leaveRoom(socket.id);
+    if (roomCode && room) {
+      botManager.cleanup(roomCode, room);
+    }
+    if (leftRoom) {
+      socket.leave(leftRoom.code);
+      emitRoomState(leftRoom.code);
     }
   });
 });

@@ -241,6 +241,14 @@ export default function Home() {
     socket.emit(EVENTS.ROOM_CREATE, { name: playerName.trim() });
   };
 
+  const handleCreateSoloRoom = () => {
+    if (!socket || !playerName.trim()) {
+      setError(t.player.pleaseEnterName);
+      return;
+    }
+    socket.emit(EVENTS.ROOM_CREATE_SOLO, { name: playerName.trim() });
+  };
+
   const handleJoinRoom = () => {
     if (!socket || !playerName.trim() || !joinCode.trim()) {
       setError(t.player.pleaseEnterNameAndRoomCode);
@@ -457,7 +465,7 @@ export default function Home() {
   const [anticipationKey, setAnticipationKey] = useState(0);
 
   // Audio manager hook
-  const { playSfx, playMusic, stopMusic, toggleMute, preferences, isMounted: isAudioMounted } = useAudio();
+  const { playSfx, playMusic, stopMusic, toggleMute, toggleSfxMute, preferences, isMounted: isAudioMounted } = useAudio();
   
   // Translations hook
   const t = useTranslations();
@@ -506,7 +514,6 @@ export default function Home() {
       const pileCount = roomState?.game?.pileCount ?? 0;
       
       // Debug log
-      console.log(`[CardThrow] Pile count: ${pileCount}, rate: ${currentRate.toFixed(3)}`);
       
       // Use 'rate' parameter for explicit playbackRate control
       playSfx('card_throw', { rate: currentRate });
@@ -817,7 +824,7 @@ export default function Home() {
     
     if (currentPhase === "IN_GAME" && prevPhase !== "IN_GAME") {
       // Game just started - play music if not muted and not already playing
-      if (!preferences.muted) {
+      if (!preferences.musicMuted) {
         playMusic('thinkfast', true);
       }
     }
@@ -826,7 +833,7 @@ export default function Home() {
     
     // Update ref for next comparison
     prevPhaseForMusicRef.current = currentPhase;
-  }, [roomState?.phase, preferences.muted, playMusic]);
+  }, [roomState?.phase, preferences.musicMuted, playMusic]);
 
   // Detect game end and play appropriate sound
   useEffect(() => {
@@ -925,11 +932,44 @@ export default function Home() {
                 </span>
               </button>
 
+              {/* Sound Toggle Button - Only render after hydration to avoid SSR mismatch */}
+              {isAudioMounted ? (
+                <button
+                  onClick={() => {
+                    toggleSfxMute();
+                  }}
+                  className={`inline-flex items-center justify-center h-9 px-3 rounded-lg text-sm font-medium transition-colors ${
+                    preferences.sfxMuted
+                      ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      : "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+                  }`}
+                  title={preferences.sfxMuted ? t.common.activateSound : t.common.deactivateSound}
+                >
+                  {preferences.sfxMuted ? (
+                    <>
+                      <span className="mr-2">🔇</span>
+                      <span>{t.common.soundOff}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="mr-2">🔊</span>
+                      <span>{t.common.soundOn}</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                // Placeholder during SSR to maintain layout
+                <div className="inline-flex items-center justify-center h-9 px-3 rounded-lg text-sm font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                  <span className="mr-2">🔊</span>
+                  <span>Sonido ON</span>
+                </div>
+              )}
+
               {/* Music Toggle Button - Only render after hydration to avoid SSR mismatch */}
               {isAudioMounted ? (
                 <button
                   onClick={() => {
-                    const wasMuted = preferences.muted;
+                    const wasMuted = preferences.musicMuted;
                     const newMutedState = toggleMute();
                     
                     // If user just unmuted, play music regardless of game state
@@ -945,13 +985,13 @@ export default function Home() {
                     }
                   }}
                   className={`inline-flex items-center justify-center h-9 px-3 rounded-lg text-sm font-medium transition-colors ${
-                    preferences.muted
+                    preferences.musicMuted
                       ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
                       : "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 hover:bg-indigo-200 dark:hover:bg-indigo-800"
                   }`}
-                  title={preferences.muted ? t.common.activateMusic : t.common.deactivateMusic}
+                  title={preferences.musicMuted ? t.common.activateMusic : t.common.deactivateMusic}
                 >
-                  {preferences.muted ? (
+                  {preferences.musicMuted ? (
                     <>
                       <span className="mr-2">🔇</span>
                       <span>{t.common.musicOff}</span>
@@ -1060,13 +1100,33 @@ export default function Home() {
 
           {/* Create Room */}
           {!roomState && (
-            <div className="mb-4">
+            <div className="mb-4 space-y-3">
               <button
                 onClick={handleCreateRoom}
                 disabled={!connected || !playerName.trim()}
                 className="w-full px-4 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
               >
                 {t.room.createRoom}
+              </button>
+              <button
+                onClick={handleCreateSoloRoom}
+                disabled={!connected || !playerName.trim()}
+                className="w-full px-4 py-3 text-white rounded-lg font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                style={{
+                  backgroundColor: !connected || !playerName.trim() ? undefined : '#CC99FF',
+                }}
+                onMouseEnter={(e) => {
+                  if (!e.currentTarget.disabled) {
+                    e.currentTarget.style.backgroundColor = '#B886E6';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!e.currentTarget.disabled) {
+                    e.currentTarget.style.backgroundColor = '#CC99FF';
+                  }
+                }}
+              >
+                {t.room.playSolo}
               </button>
             </div>
           )}
@@ -1141,6 +1201,14 @@ export default function Home() {
                         <span className="text-gray-900 dark:text-white font-medium">
                           {player.name}
                         </span>
+                        {player.isBot && (
+                          <span
+                            className="text-xs px-2 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded-full font-medium"
+                            title={t.players.bot}
+                          >
+                            🤖 {t.players.bot}
+                          </span>
+                        )}
                         {isPlayerHost && (
                           <span
                             className="text-xs px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-full font-medium"
@@ -1158,7 +1226,7 @@ export default function Home() {
                             {t.players.ready}
                           </span>
                         )}
-                        {!player.ready && (
+                        {!player.ready && !player.isBot && (
                           <span
                             className="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-full font-medium"
                             title={t.players.notReady}
@@ -1176,7 +1244,7 @@ export default function Home() {
               </div>
 
               {/* Ready Toggle Button */}
-              {currentPlayer && (
+              {currentPlayer && !currentPlayer.isBot && (
                 <div className="mb-4">
                   <button
                     onClick={handleReadyToggle}
@@ -1459,7 +1527,7 @@ export default function Home() {
                               {disabledToast.message}
                             </div>
                           </motion.div>
-                  )}
+                        )}
                       </AnimatePresence>
                 </div>
                   );

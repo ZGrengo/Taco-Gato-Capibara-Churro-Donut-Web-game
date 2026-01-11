@@ -60,9 +60,9 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
 
   // Words to display: [previous, current, next] for mobile
   const mobileWords = useMemo(() => [
-    { word: KINDS[prevIndex], index: prevIndex, isCurrent: false, isNext: false },
-    { word: KINDS[currentIndex], index: currentIndex, isCurrent: true, isNext: false },
-    { word: KINDS[nextIndex], index: nextIndex, isCurrent: false, isNext: true },
+    { word: KINDS[prevIndex], index: prevIndex, position: 'prev', isCurrent: false, isNext: false },
+    { word: KINDS[currentIndex], index: currentIndex, position: 'current', isCurrent: true, isNext: false },
+    { word: KINDS[nextIndex], index: nextIndex, position: 'next', isCurrent: false, isNext: true },
   ], [prevIndex, currentIndex, nextIndex]);
 
   return (
@@ -74,7 +74,7 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
         aria-label={ariaLabel}
         aria-live="polite"
       >
-        {mobileWords.map(({ word, index, isCurrent, isNext }) => {
+        {mobileWords.map(({ word, index, position, isCurrent, isNext }, mapIndex) => {
           let className = "px-2 py-1 text-xs font-medium transition-all duration-200";
 
           if (isCurrent) {
@@ -89,7 +89,7 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
           }
 
           return (
-            <div key={`mobile-${word}`} className="flex items-center">
+            <div key={`mobile-${position}-${word}-${index}-${mapIndex}`} className="flex items-center">
               {/* Show arrow before current and next words */}
               {index !== prevIndex && (
                 <motion.span
@@ -105,7 +105,7 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
               )}
 
               <motion.span
-                key={`mobile-${word}-${currentIndex}-${anticipationKey}-${isCurrent ? pulseKey : 0}`}
+                key={`mobile-${word}-${index}-${currentIndex}-${anticipationKey}-${isCurrent ? pulseKey : 0}`}
                 className={className}
                 style={isCurrent ? { color: '#CCFF99' } : isNext ? { color: '#FFCC99', opacity: 0.9 } : {}}
                 initial={isCurrent && !shouldReduceMotion ? { scale: 1 } : false}

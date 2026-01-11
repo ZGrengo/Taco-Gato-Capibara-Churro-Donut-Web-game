@@ -38,6 +38,7 @@ export interface Translations {
   room: {
     roomCode: string;
     createRoom: string;
+    playSolo: string;
     joinRoom: string;
     join: string;
     roomCodePlaceholder: string;
@@ -149,6 +150,11 @@ const translations: Record<Language, Translations> = {
       musicOff: 'Música OFF',
       activateMusic: 'Activar música',
       deactivateMusic: 'Desactivar música',
+      sound: 'Sonido',
+      soundOn: 'Sonido ON',
+      soundOff: 'Sonido OFF',
+      activateSound: 'Activar sonido',
+      deactivateSound: 'Desactivar sonido',
       multiplayerGame: '🎮 Juego Multijugador',
       realtimeMultiplayerExperience: 'Experiencia multijugador en tiempo real',
       changeToEnglish: 'Cambiar a inglés',
@@ -165,6 +171,7 @@ const translations: Record<Language, Translations> = {
     room: {
       roomCode: 'Código de Sala',
       createRoom: 'Crear Sala',
+      playSolo: '🎮 Jugar en Solitario',
       joinRoom: 'Unirse a Sala',
       join: 'Unirse',
       roomCodePlaceholder: 'Código de sala',
@@ -211,6 +218,7 @@ const translations: Record<Language, Translations> = {
     players: {
       players: 'Jugadores',
       host: 'Host',
+      bot: 'Bot',
       turn: 'Turno',
       currentTurn: 'Turno Actual',
       ready: '✓ Listo',
@@ -283,6 +291,7 @@ const translations: Record<Language, Translations> = {
     room: {
       roomCode: 'Room Code',
       createRoom: 'Create Room',
+      playSolo: '🎮 Play Solo',
       joinRoom: 'Join Room',
       join: 'Join',
       roomCodePlaceholder: 'Room code',
@@ -329,6 +338,7 @@ const translations: Record<Language, Translations> = {
     players: {
       players: 'Players',
       host: 'Host',
+      bot: 'Bot',
       turn: 'Turn',
       currentTurn: 'Current Turn',
       ready: '✓ Ready',

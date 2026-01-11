@@ -128,7 +128,7 @@ interface ClaimWindow {
 /**
  * Internal game state (server-side only)
  */
-interface InternalGameState {
+export interface InternalGameState {
   hands: Record<string, Card[]>; // playerId -> cards
   pile: Card[]; // Central pile
   turnIndex: number;
@@ -141,7 +141,7 @@ interface InternalGameState {
 /**
  * Extended Room with internal game state
  */
-interface RoomWithGame extends Room {
+export interface RoomWithGame extends Room {
   internalGame?: InternalGameState;
 }
 
@@ -177,6 +177,32 @@ export class RoomManager {
 
     this.rooms.set(code, room);
     this.playerToRoom.set(playerId, code);
+    return room;
+  }
+
+  /**
+   * Creates a solo room with a bot player
+   */
+  createSoloRoom(playerName: string, playerId: string, botManager: any): Room {
+    const code = generateRoomCode();
+    const player = createPlayer(playerId, playerName);
+
+    // Create bot
+    const botId = botManager.generateBotId();
+    const bot = botManager.createBotPlayer(botId);
+
+    const room: Room = {
+      code,
+      phase: "LOBBY",
+      hostId: playerId,
+      players: [player, bot],
+      createdAt: Date.now(),
+    };
+
+    this.rooms.set(code, room);
+    this.playerToRoom.set(playerId, code);
+    // Register bot in playerToRoom so flipCard can find it
+    this.playerToRoom.set(botId, code);
     return room;
   }
 
@@ -272,10 +298,12 @@ export class RoomManager {
       room.hostId = sortedPlayers[0].id;
     }
 
-    // Reset all ready states when someone leaves in LOBBY phase
+    // Reset all ready states when someone leaves in LOBBY phase (except bots)
     if (room.phase === "LOBBY") {
       room.players.forEach((p) => {
-        p.ready = false;
+        if (!p.isBot) {
+          p.ready = false;
+        }
       });
     }
 
@@ -293,6 +321,11 @@ export class RoomManager {
 
     const player = room.players.find((p) => p.id === playerId);
     if (!player) {
+      return null;
+    }
+
+    // Bots cannot toggle ready (they are always ready)
+    if (player.isBot) {
       return null;
     }
 
@@ -687,7 +720,20 @@ export class RoomManager {
    * Handles a flip request from a player
    */
   flipCard(playerId: string): Room | null {
-    const room = this.getPlayerRoom(playerId);
+    // For bots, we need to find the room differently since they're not in playerToRoom
+    let room: RoomWithGame | null = null;
+    if (playerId.startsWith('bot-')) {
+      // Find room by checking all rooms for this bot
+      for (const [code, r] of this.rooms.entries()) {
+        if (r.players.some(p => p.id === playerId)) {
+          room = r;
+          break;
+        }
+      }
+    } else {
+      room = this.getPlayerRoom(playerId);
+    }
+    
     if (!room || !room.internalGame || room.phase !== "IN_GAME") {
       return null;
     }

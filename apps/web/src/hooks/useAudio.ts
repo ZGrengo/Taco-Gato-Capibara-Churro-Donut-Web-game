@@ -20,7 +20,7 @@ export function useAudio() {
   // Initialize with default preferences for SSR compatibility
   const [preferences, setPreferences] = useState(() => {
     if (typeof window === 'undefined') {
-      return { sfxVolume: 0.7, musicVolume: 0.3, muted: true };
+      return { sfxVolume: 0.7, musicVolume: 0.3, muted: true, sfxMuted: false, musicMuted: true };
     }
     return AudioManager.getPreferences();
   });
@@ -80,6 +80,28 @@ export function useAudio() {
     setPreferences(AudioManager.getPreferences());
   }, []);
 
+  const toggleSfxMute = useCallback(() => {
+    const muted = AudioManager.toggleSfxMute();
+    setPreferences(AudioManager.getPreferences());
+    return muted;
+  }, []);
+
+  const setSfxMuted = useCallback((muted: boolean) => {
+    AudioManager.setSfxMuted(muted);
+    setPreferences(AudioManager.getPreferences());
+  }, []);
+
+  const toggleMusicMute = useCallback(() => {
+    const muted = AudioManager.toggleMusicMute();
+    setPreferences(AudioManager.getPreferences());
+    return muted;
+  }, []);
+
+  const setMusicMuted = useCallback((muted: boolean) => {
+    AudioManager.setMusicMuted(muted);
+    setPreferences(AudioManager.getPreferences());
+  }, []);
+
   return {
     // Audio functions
     playSfx,
@@ -89,6 +111,10 @@ export function useAudio() {
     setMusicVolume,
     toggleMute,
     setMuted,
+    toggleSfxMute,
+    setSfxMuted,
+    toggleMusicMute,
+    setMusicMuted,
     
     // State
     isUnlocked,
