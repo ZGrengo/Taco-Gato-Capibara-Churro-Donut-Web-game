@@ -19,6 +19,7 @@ export function ClickFrenzyGesture({
   minIntervalMs,
   onComplete,
 }: ClickFrenzyGestureProps) {
+  const t = useTranslations();
   const [clicksCount, setClicksCount] = useState(0);
   const [lastClickAt, setLastClickAt] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
@@ -157,24 +158,24 @@ export function ClickFrenzyGesture({
           <div className="text-center">
             <div className="text-4xl mb-2">🎯</div>
             <div className="text-lg font-bold text-green-700 dark:text-green-300">
-              ¡Completado!
+              {t.gestures.clickFrenzy.completed}
             </div>
           </div>
         ) : isExpired ? (
           <div className="text-center">
             <div className="text-4xl mb-2">⏱️</div>
             <div className="text-lg font-bold text-gray-600 dark:text-gray-400">
-              Tiempo agotado
+              {t.gestures.clickFrenzy.timeUp}
             </div>
           </div>
         ) : (
           <div className="text-center">
             <div className="text-5xl mb-2">👆</div>
             <div className="text-lg font-bold text-red-700 dark:text-red-300">
-              ¡Haz click aquí!
+              {t.gestures.clickFrenzy.clickHere}
             </div>
             <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              {requiredClicks - clicksCount} clicks restantes
+              {requiredClicks - clicksCount} {t.gestures.clickFrenzy.clicksRemaining}
             </div>
           </div>
         )}

@@ -112,6 +112,7 @@ export function CircleGesture({
   targetCenterTol,
   minPoints,
 }: CircleGestureProps) {
+  const t = useTranslations();
   const [points, setPoints] = useState<Point[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -335,10 +336,10 @@ export function CircleGesture({
       <div className="mb-4">
         <p className="text-center text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
           {isComplete
-            ? "✓ Círculo completado!"
+            ? `✓ ${t.gestures.circle.completed}`
             : hasError
-              ? "Intenta de nuevo - Dibuja un círculo alrededor de la carta"
-              : "Dibuja un círculo alrededor de la carta"}
+              ? `${t.gestures.circle.tryAgain} - ${t.gestures.circle.drawCircleAroundCard}`
+              : t.gestures.circle.drawCircleAroundCard}
         </p>
       </div>
 
@@ -390,7 +391,7 @@ export function CircleGesture({
             <div className="text-center">
               <div className="text-4xl mb-2">⏱️</div>
               <div className="text-lg font-bold text-gray-700 dark:text-gray-300">
-                Tiempo agotado
+                {t.gestures.circle.timeUp}
               </div>
             </div>
           </div>
@@ -401,7 +402,7 @@ export function CircleGesture({
             <div className="text-center">
               <div className="text-4xl mb-2">🎯</div>
               <div className="text-lg font-bold text-green-700 dark:text-green-300">
-                ¡Círculo válido!
+                {t.gestures.circle.completed}
               </div>
             </div>
           </div>

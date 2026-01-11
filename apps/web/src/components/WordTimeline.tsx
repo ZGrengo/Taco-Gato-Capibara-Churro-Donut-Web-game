@@ -46,6 +46,11 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
     return (currentIndex + 1) % KINDS.length;
   }, [currentIndex, currentWord]);
 
+  // Calculate previous index for mobile view
+  const prevIndex = useMemo(() => {
+    return currentIndex === 0 ? KINDS.length - 1 : currentIndex - 1;
+  }, [currentIndex]);
+
   // Get aria label for accessibility
   const ariaLabel = useMemo(() => {
     const current = KINDS[currentIndex].toUpperCase();
@@ -53,14 +58,137 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
     return `Palabra actual: ${current}. Siguiente: ${next}`;
   }, [currentIndex, nextIndex]);
 
+  // Words to display: [previous, current, next] for mobile
+  const mobileWords = useMemo(() => [
+    { word: KINDS[prevIndex], index: prevIndex, isCurrent: false, isNext: false },
+    { word: KINDS[currentIndex], index: currentIndex, isCurrent: true, isNext: false },
+    { word: KINDS[nextIndex], index: nextIndex, isCurrent: false, isNext: true },
+  ], [prevIndex, currentIndex, nextIndex]);
+
   return (
-    <div
-      className="flex items-center justify-center gap-2 mb-4 px-4"
-      role="status"
-      aria-label={ariaLabel}
-      aria-live="polite"
-    >
-      {KINDS.map((word, index) => {
+    <>
+      {/* Mobile view: Only 3 words (previous → CURRENT → next) */}
+      <div
+        className="md:hidden flex items-center justify-center gap-1.5 mb-4 px-2"
+        role="status"
+        aria-label={ariaLabel}
+        aria-live="polite"
+      >
+        {mobileWords.map(({ word, index, isCurrent, isNext }) => {
+          let className = "px-2 py-1 text-xs font-medium transition-all duration-200";
+
+          if (isCurrent) {
+            // Current word: larger, bold, highlighted
+            className += " uppercase font-bold text-yellow-300 dark:text-yellow-400 text-base";
+          } else if (isNext) {
+            // Next word: smaller, reduced opacity
+            className += " text-slate-400 dark:text-slate-500 opacity-70 text-xs";
+          } else {
+            // Previous word: smaller, reduced opacity
+            className += " text-slate-500 dark:text-slate-600 opacity-60 text-xs";
+          }
+
+          return (
+            <div key={`mobile-${word}`} className="flex items-center">
+              {/* Show arrow before current and next words */}
+              {index !== prevIndex && (
+                <motion.span
+                  className={`text-slate-400 dark:text-slate-600 mx-0.5 ${
+                    isCurrent ? "opacity-100" : "opacity-60"
+                  }`}
+                  initial={{ opacity: 0.5 }}
+                  animate={{ opacity: isCurrent ? 1 : 0.6 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  →
+                </motion.span>
+              )}
+
+              <motion.span
+                key={`mobile-${word}-${currentIndex}-${anticipationKey}-${isCurrent ? pulseKey : 0}`}
+                className={className}
+                initial={isCurrent && !shouldReduceMotion ? { scale: 1 } : false}
+                animate={
+                  isCurrent
+                    ? (() => {
+                        const shouldPulse = pulseKey > 0 && index === currentIndex;
+                        const shouldBlink = anticipationKey > 0;
+                        
+                        if (shouldReduceMotion) {
+                          return { scale: 1, textShadow: "none" };
+                        }
+                        
+                        if (shouldBlink) {
+                          return {
+                            scale: [1, 1.06, 1],
+                            textShadow: [
+                              "0 0 8px rgba(251, 191, 36, 0.6), 0 0 16px rgba(251, 191, 36, 0.4)",
+                              "0 0 24px rgba(251, 191, 36, 1), 0 0 40px rgba(251, 191, 36, 0.6)",
+                              "0 0 8px rgba(251, 191, 36, 0.6), 0 0 16px rgba(251, 191, 36, 0.4)",
+                            ],
+                          };
+                        }
+                        
+                        if (shouldPulse) {
+                          return {
+                            scale: [1, 1.08, 1],
+                            textShadow: [
+                              "0 0 8px rgba(251, 191, 36, 0.5), 0 0 16px rgba(251, 191, 36, 0.3)",
+                              "0 0 12px rgba(251, 191, 36, 0.7), 0 0 24px rgba(251, 191, 36, 0.5)",
+                              "0 0 8px rgba(251, 191, 36, 0.5), 0 0 16px rgba(251, 191, 36, 0.3)",
+                            ],
+                          };
+                        }
+                        
+                        return {
+                          scale: 1,
+                          textShadow: "0 0 8px rgba(251, 191, 36, 0.5), 0 0 16px rgba(251, 191, 36, 0.3)",
+                        };
+                      })()
+                    : {}
+                }
+                transition={
+                  isCurrent
+                    ? (() => {
+                        const shouldPulse = pulseKey > 0 && index === currentIndex;
+                        const shouldBlink = anticipationKey > 0;
+                        
+                        if (shouldReduceMotion) return {};
+                        
+                        if (shouldBlink) {
+                          return {
+                            scale: { times: [0, 0.5, 1], duration: 0.15, ease: "easeOut" },
+                            textShadow: { times: [0, 0.6, 0.9, 1], duration: 0.25, ease: "easeOut" },
+                          };
+                        }
+                        
+                        if (shouldPulse) {
+                          return {
+                            scale: { times: [0, 0.5, 1], duration: 0.13, ease: "easeOut" },
+                            textShadow: { times: [0, 0.5, 1], duration: 0.13, ease: "easeOut" },
+                          };
+                        }
+                        
+                        return { textShadow: { duration: 0.15, ease: "easeOut" } };
+                      })()
+                    : { duration: 0.2 }
+                }
+              >
+                {word.toUpperCase()}
+              </motion.span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop view: All words */}
+      <div
+        className="hidden md:flex items-center justify-center gap-2 mb-4 px-4"
+        role="status"
+        aria-label={ariaLabel}
+        aria-live="polite"
+      >
+        {KINDS.map((word, index) => {
         const isCurrent = index === currentIndex;
         const isNext = index === nextIndex;
         const isPast = index < currentIndex;
@@ -206,6 +334,7 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
         );
       })}
     </div>
+    </>
   );
 }
 

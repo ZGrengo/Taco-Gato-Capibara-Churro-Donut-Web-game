@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Game - Real-time Multiplayer",
+  title: "¡Piensa Rápido! - Think Fast!",
   description: "Real-time multiplayer game",
 };
 

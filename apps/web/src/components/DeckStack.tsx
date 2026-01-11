@@ -3,6 +3,7 @@
 import { forwardRef, useState, useCallback, useRef, useEffect, useImperativeHandle } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useAudio } from "../hooks/useAudio";
+import { useTranslations } from "../hooks/useTranslations";
 
 interface Tap {
   id: string;
@@ -25,10 +26,148 @@ interface DeckStackProps {
 // Deterministic rotations table to avoid flicker
 const ROTATIONS = [-1.5, 1.2, -0.8, 1.8, -1.2, 0.9];
 
+/**
+ * Help bubble component with auto-dismiss logic
+ * Used by both mobile and desktop variants
+ */
+function useHelpBubbleAutoDismiss(helpText: string | null | undefined, count: number) {
+  const [isVisible, setIsVisible] = useState(true);
+  const shouldReduceMotion = useReducedMotion();
+  const dismissTimeoutRef = useRef<number | null>(null);
+  const prevCountRef = useRef<number>(count);
+
+  // Reset visibility when helpText appears
+  useEffect(() => {
+    if (helpText) {
+      setIsVisible(true);
+      prevCountRef.current = count; // Reset count tracking
+      
+      // Clear existing timeout
+      if (dismissTimeoutRef.current !== null) {
+        clearTimeout(dismissTimeoutRef.current);
+      }
+      
+      // Auto-dismiss after 3 seconds
+      dismissTimeoutRef.current = window.setTimeout(() => {
+        setIsVisible(false);
+      }, 3000);
+
+      return () => {
+        if (dismissTimeoutRef.current !== null) {
+          clearTimeout(dismissTimeoutRef.current);
+        }
+      };
+    } else {
+      setIsVisible(false);
+    }
+  }, [helpText, count]);
+
+  // Dismiss immediately when user flips (count decreases)
+  useEffect(() => {
+    // If count decreased, user flipped a card
+    if (count < prevCountRef.current && isVisible) {
+      setIsVisible(false);
+      // Clear timeout if still pending
+      if (dismissTimeoutRef.current !== null) {
+        clearTimeout(dismissTimeoutRef.current);
+        dismissTimeoutRef.current = null;
+      }
+    }
+    prevCountRef.current = count;
+  }, [count, isVisible]);
+
+  return { isVisible, shouldReduceMotion };
+}
+
+/**
+ * Mobile help bubble component - Auto-dismisses after 3s or when count decreases (flip detected)
+ */
+function MobileHelpBubble({ 
+  helpText, 
+  enabled,
+  count
+}: { 
+  helpText: string | null | undefined; 
+  enabled: boolean;
+  count: number;
+}) {
+  const { isVisible, shouldReduceMotion } = useHelpBubbleAutoDismiss(helpText, count);
+  const t = useTranslations();
+
+  if (!helpText || !isVisible) return null;
+
+  // Short text for mobile
+  const mobileText = helpText === t.deck.touchToPlay
+    ? t.deck.touchYourDeckToPlay
+    : helpText === t.deck.waiting
+    ? t.deck.waiting
+    : helpText;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -4 }}
+        transition={{ 
+          duration: shouldReduceMotion ? 0.15 : 0.25,
+          ease: "easeOut"
+        }}
+        className="md:hidden absolute -top-12 left-1/2 transform -translate-x-1/2 pointer-events-none z-50 max-w-[160px] w-full px-2"
+      >
+        <div className="bg-indigo-600 dark:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg text-center relative mx-auto">
+          {mobileText}
+          {/* Arrow pointing down to deck */}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-0.5">
+            <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-indigo-600 dark:border-t-indigo-500"></div>
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+/**
+ * Desktop help bubble component - Auto-dismisses after 3s, positioned to the right of deck
+ */
+function DesktopHelpBubble({ 
+  helpText, 
+  count
+}: { 
+  helpText: string | null | undefined; 
+  count: number;
+}) {
+  const { isVisible, shouldReduceMotion } = useHelpBubbleAutoDismiss(helpText, count);
+
+  if (!helpText || !isVisible) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, x: -8, scale: 0.9 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
+        exit={{ opacity: 0, x: -8, scale: 0.9 }}
+        transition={{ 
+          duration: shouldReduceMotion ? 0.15 : 0.25,
+          ease: "easeOut"
+        }}
+        className="hidden md:block absolute top-1/2 left-full ml-3 transform -translate-y-1/2 pointer-events-none z-50"
+      >
+        <div className="bg-indigo-600 dark:bg-indigo-500 text-white px-3 py-2 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap relative">
+          {helpText}
+          {/* Speech bubble tail pointing left to deck */}
+          <div className="absolute top-1/2 left-0 transform -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-indigo-600 dark:bg-indigo-500 rotate-45"></div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
   ({ count, backSrc, isMyTurn = false, enabled = false, disabledReason, onFlip, onDisabledClick, helpText, topCardRef }, ref) => {
     const shouldReduceMotion = useReducedMotion();
     const { playSfx } = useAudio();
+    const t = useTranslations();
     const [isPressed, setIsPressed] = useState(false);
     const [isHovering, setIsHovering] = useState(false);
     const [isPointerFine, setIsPointerFine] = useState(false);
@@ -205,7 +344,7 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
       }
       prevCountRef.current = count;
     }, [count, playSfx]);
-
+    
     if (count === 0) {
       return (
         <div
@@ -218,7 +357,7 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
             className="bg-green-500 text-white rounded-xl shadow-xl border-4 border-green-600 px-6 py-4 text-center"
           >
             <p className="text-xl font-bold">🎉</p>
-            <p className="text-sm font-semibold mt-1">¡Ganaste!</p>
+            <p className="text-sm font-semibold mt-1">{t.deck.youWon}</p>
           </motion.div>
         </div>
       );
@@ -231,15 +370,15 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
     return (
       <motion.div
         ref={ref}
-        className="relative w-56 h-72"
-        style={{ position: "relative" }}
+        className="relative w-56 h-72 overflow-visible"
+        style={{ position: "relative", overflow: "visible" }}
       >
         <div
           ref={containerRef}
           role="button"
           tabIndex={enabled ? 0 : -1}
           aria-disabled={!enabled}
-          aria-label={enabled ? "Voltear carta" : disabledReason || "No se puede voltear carta"}
+          aria-label={enabled ? t.deck.flipCard : disabledReason || t.deck.cannotFlipCard}
           onClick={handleClick}
           onKeyDown={handleKeyDown}
           onPointerDown={handlePointerDown}
@@ -380,24 +519,22 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
             </AnimatePresence>
           </div>
 
-          {/* Help text bubble */}
-          <AnimatePresence>
-            {helpText && (
-              <motion.div
-                initial={{ opacity: 0, y: 8, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8, scale: 0.9 }}
-                transition={{ duration: 0.2 }}
-                className="absolute -top-14 left-[40%] transform -translate-x-1/2 pointer-events-none z-50"
-              >
-                <div className="bg-indigo-600 dark:bg-indigo-500 text-white px-3 py-2 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap relative">
-                  {helpText}
-                  {/* Speech bubble tail */}
-                  <div className="absolute -bottom-1 left-[60%] transform -translate-x-1/2 w-2 h-2 bg-indigo-600 dark:bg-indigo-500 rotate-45"></div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Help text bubble - Desktop: right side, auto-dismiss */}
+          {helpText && (
+            <DesktopHelpBubble 
+              helpText={helpText} 
+              count={count}
+            />
+          )}
+
+          {/* Help text bubble - Mobile: centered, compact, auto-dismiss */}
+          {helpText && (
+            <MobileHelpBubble 
+              helpText={helpText} 
+              enabled={enabled}
+              count={count}
+            />
+          )}
         </div>
       </motion.div>
     );

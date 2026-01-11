@@ -3,6 +3,7 @@
 import { forwardRef, ReactNode, useMemo } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import type { Card } from "@acme/shared";
+import { useTranslations } from "../hooks/useTranslations";
 
 const MAX_PILE_LAYERS = 10;
 
@@ -25,6 +26,7 @@ interface PileCenterProps {
 export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
   ({ pileCount, topCard, backSrc, impactKey = 0, shakeKey = 0, oopsKey = 0, oopsCardCount = 0, goodKey = 0, anticipationKey = 0, children }, ref) => {
     const shouldReduceMotion = useReducedMotion();
+    const t = useTranslations();
     
     // Calculate visible layers (pileCount - 1 because topCard is separate)
     const visibleLayers = Math.min(Math.max(0, pileCount - 1), MAX_PILE_LAYERS);
@@ -239,7 +241,7 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
             >
               <div className="bg-red-500 text-white px-6 py-3 rounded-lg font-bold text-lg shadow-2xl border-4 border-red-600 dark:border-red-700 whitespace-nowrap">
                 <span className="drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]">
-                  😵‍💫 Oops! Te llevas {oopsCardCount} {oopsCardCount === 1 ? 'carta' : 'cartas'}
+                  😵‍💫 {t.pile.oops} {t.pile.youGotCards} {oopsCardCount} {oopsCardCount === 1 ? t.pile.card : t.pile.cards}
                 </span>
               </div>
             </motion.div>

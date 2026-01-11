@@ -204,60 +204,66 @@ class AudioManagerClass {
 
   /**
    * Get or create an audio element for background music
-   * Tries WAV first, falls back to MP3 if not found
+   * For thinkfast: tries MP3 directly (known format)
+   * For others: tries WAV first, falls back to MP3 if not found
    */
   private getMusicAudio(name: MusicName): HTMLAudioElement | null {
     if (!this.musicCache.has(name)) {
-      // Special handling for thinkfast: it's in /audio/ directly, not /audio/music/
+      // Special handling for thinkfast: it's in /audio/ directly, not /audio/music/, and it's MP3
       const basePath = name === 'thinkfast' ? '/audio' : '/audio/music';
+      const isThinkfast = name === 'thinkfast';
       
-      // Try WAV first (preferred format)
-      const wavAudio = new Audio(`${basePath}/${name}.wav`);
-      wavAudio.preload = 'auto';
-      wavAudio.loop = true; // Music typically loops
+      // For thinkfast, try MP3 directly (we know it's MP3)
+      // For others, try WAV first
+      const primaryFormat = isThinkfast ? 'mp3' : 'wav';
+      const fallbackFormat = isThinkfast ? 'wav' : 'mp3';
+      
+      const primaryAudio = new Audio(`${basePath}/${name}.${primaryFormat}`);
+      primaryAudio.preload = 'auto';
+      primaryAudio.loop = true; // Music typically loops
       
       let audioLoaded = false;
       
-      // Listen for successful load of WAV
-      wavAudio.addEventListener('canplaythrough', () => {
+      // Listen for successful load of primary format
+      primaryAudio.addEventListener('canplaythrough', () => {
         if (!audioLoaded) {
           audioLoaded = true;
-          this.musicCache.set(name, wavAudio);
+          this.musicCache.set(name, primaryAudio);
         }
       }, { once: true });
       
-      // Handle WAV load error - fallback to MP3
-      wavAudio.addEventListener('error', () => {
+      // Handle primary format load error - fallback to alternative format
+      primaryAudio.addEventListener('error', () => {
         if (!audioLoaded) {
-          console.debug(`[AudioManager] WAV not found for music ${name}, trying MP3 fallback...`);
-          // Try MP3 as fallback
-          const mp3Audio = new Audio(`${basePath}/${name}.mp3`);
-          mp3Audio.preload = 'auto';
-          mp3Audio.loop = true;
+          console.debug(`[AudioManager] ${primaryFormat.toUpperCase()} not found for music ${name}, trying ${fallbackFormat.toUpperCase()} fallback...`);
+          // Try fallback format
+          const fallbackAudio = new Audio(`${basePath}/${name}.${fallbackFormat}`);
+          fallbackAudio.preload = 'auto';
+          fallbackAudio.loop = true;
           
-          mp3Audio.addEventListener('canplaythrough', () => {
+          fallbackAudio.addEventListener('canplaythrough', () => {
             if (!audioLoaded) {
               audioLoaded = true;
-              // WAV failed but MP3 loaded successfully
-              this.musicCache.set(name, mp3Audio);
+              // Primary failed but fallback loaded successfully
+              this.musicCache.set(name, fallbackAudio);
             }
           }, { once: true });
           
-          mp3Audio.addEventListener('error', () => {
+          fallbackAudio.addEventListener('error', () => {
             if (!audioLoaded) {
-              console.debug(`[AudioManager] Music file not found: ${basePath}/${name}.wav or ${basePath}/${name}.mp3 (this is expected until audio files are added)`);
+              console.debug(`[AudioManager] Music file not found: ${basePath}/${name}.${primaryFormat} or ${basePath}/${name}.${fallbackFormat} (this is expected until audio files are added)`);
               // Cache a dummy audio element to prevent repeated attempts
-              this.musicCache.set(name, mp3Audio);
+              this.musicCache.set(name, fallbackAudio);
             }
           }, { once: true });
           
-          // Cache MP3 immediately (will be updated if it loads successfully)
-          this.musicCache.set(name, mp3Audio);
+          // Cache fallback immediately (will be updated if it loads successfully)
+          this.musicCache.set(name, fallbackAudio);
         }
       }, { once: true });
       
-      // Cache WAV immediately (optimistic caching - will be replaced by MP3 if WAV fails)
-      this.musicCache.set(name, wavAudio);
+      // Cache primary immediately (will be replaced by fallback if primary fails)
+      this.musicCache.set(name, primaryAudio);
     }
     
     return this.musicCache.get(name) || null;
@@ -382,18 +388,45 @@ class AudioManagerClass {
       audio.volume = this.preferences.musicVolume;
       this.currentMusic = audio;
       
-      const playPromise = audio.play();
+      // Ensure audio is ready before playing
+      const attemptPlay = () => {
+        if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+          // Audio is ready, play it
+          const playPromise = audio.play();
+          
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                // Music started playing successfully
+              })
+              .catch((error) => {
+                // Autoplay was prevented or other error
+                console.debug(`[AudioManager] Failed to play music "${name}":`, error);
+              });
+          }
+        } else {
+          // Audio not ready yet, wait for it
+          const onCanPlay = () => {
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  // Music started playing successfully
+                })
+                .catch((error) => {
+                  console.debug(`[AudioManager] Failed to play music "${name}":`, error);
+                });
+            }
+            audio.removeEventListener('canplaythrough', onCanPlay);
+          };
+          audio.addEventListener('canplaythrough', onCanPlay, { once: true });
+          // Also try to load it explicitly
+          audio.load();
+        }
+      };
       
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            // Music started playing successfully
-          })
-          .catch((error) => {
-            // Autoplay was prevented or other error
-            console.debug(`[AudioManager] Failed to play music "${name}":`, error);
-          });
-      }
+      attemptPlay();
+      
     } catch (error) {
       console.debug(`[AudioManager] Error playing music "${name}":`, error);
     }

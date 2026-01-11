@@ -33,6 +33,7 @@ import { ClickablePileArea } from "../components/ClickablePileArea";
 import { WordTimeline } from "../components/WordTimeline";
 import { useAudio } from "../hooks/useAudio";
 import { useThrowRate } from "../hooks/useThrowRate";
+import { useTranslations } from "../hooks/useTranslations";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
@@ -232,7 +233,7 @@ export default function Home() {
 
   const handleCreateRoom = () => {
     if (!socket || !playerName.trim()) {
-      setError("Please enter your name");
+      setError(t.player.pleaseEnterName);
       return;
     }
     socket.emit(EVENTS.ROOM_CREATE, { name: playerName.trim() });
@@ -240,7 +241,7 @@ export default function Home() {
 
   const handleJoinRoom = () => {
     if (!socket || !playerName.trim() || !joinCode.trim()) {
-      setError("Please enter your name and room code");
+      setError(t.player.pleaseEnterNameAndRoomCode);
       return;
     }
     socket.emit(EVENTS.ROOM_JOIN, {
@@ -437,6 +438,16 @@ export default function Home() {
 
   // Audio manager hook
   const { playSfx, playMusic, stopMusic, toggleMute, preferences, isMounted: isAudioMounted } = useAudio();
+  
+  // Translations hook
+  const t = useTranslations();
+  
+  // Update page title based on language
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = t.currentLanguage === 'es' ? '¡Piensa Rápido!' : 'Think Fast!';
+    }
+  }, [t.currentLanguage]);
   
   // Progressive throw rate hook (for card_throw pitch)
   const throwRate = useThrowRate(
@@ -830,17 +841,17 @@ export default function Home() {
   // Get validation message for start game
   const getStartGameMessage = () => {
     if (!roomState || !isHost) return null;
-    if (roomState.phase !== "LOBBY") return "Game has already started";
+    if (roomState.phase !== "LOBBY") return t.game.gameHasAlreadyStarted;
     if (roomState.players.length < 2)
-      return "Need at least 2 players to start";
+      return t.game.needAtLeast2Players;
     const notReady = roomState.players.filter((p) => !p.ready);
     if (notReady.length > 0)
-      return `${notReady.length} player(s) not ready`;
+      return `${notReady.length} ${t.game.playersNotReady}`;
     return null;
   };
 
   return (
-    <main className="min-h-screen p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+    <main className="min-h-screen p-8 dark:from-gray-900 dark:to-gray-800" style={{ background: '#99CCFF' }}>
       <div className="max-w-2xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -848,74 +859,91 @@ export default function Home() {
           className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8"
         >
           <h1 className="text-4xl font-bold mb-2 text-gray-900 dark:text-white">
-            🎮 Multiplayer Game
+            {t.common.gameTitle}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Real-time multiplayer experience
+          <p className="text-lg font-semibold text-indigo-600 dark:text-indigo-400 mb-6 tracking-wide">
+            {t.common.wordSequence}
           </p>
 
-          {/* Connection Status and Music Toggle */}
+          {/* Connection Status, Language Toggle, and Music Toggle */}
           <div className="mb-6 flex items-center justify-between">
             <div
               className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                 connected
-                  ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                  ? "dark:bg-green-900 dark:text-green-200"
                   : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
               }`}
+              style={connected ? { backgroundColor: '#CCFF99', color: '#1a1a1a' } : {}}
             >
               <span
                 className={`w-2 h-2 rounded-full mr-2 ${
-                  connected ? "bg-green-500" : "bg-red-500"
+                  connected ? "" : "bg-red-500"
                 }`}
+                style={connected ? { backgroundColor: '#16a34a' } : {}}
               />
-              {connected ? "Connected" : "Disconnected"}
+              {connected ? t.common.connected : t.common.disconnected}
             </div>
 
-            {/* Music Toggle Button - Only render after hydration to avoid SSR mismatch */}
-            {isAudioMounted ? (
+            <div className="flex items-center gap-2">
+              {/* Language Toggle Button */}
               <button
                 onClick={() => {
-                  const wasMuted = preferences.muted;
-                  const newMutedState = toggleMute();
-                  
-                  // If user just unmuted, play music regardless of game state
-                  if (wasMuted && !newMutedState) {
-                    // User unmuted - play music immediately
-                    // Use setTimeout to ensure AudioManager state is updated after toggleMute
-                    setTimeout(() => {
-                      playMusic('thinkfast', true); // Force play even if muted check fails
-                    }, 50);
-                  } else if (!wasMuted && newMutedState) {
-                    // User muted - stop music
-                    stopMusic();
-                  }
+                  t.toggleLanguage();
                 }}
-                className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                  preferences.muted
-                    ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
-                    : "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-                }`}
-                title={preferences.muted ? "Activar música" : "Desactivar música"}
+                className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium transition-colors bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                title={t.currentLanguage === 'es' ? t.common.changeToEnglish : t.common.changeToSpanish}
               >
-                {preferences.muted ? (
-                  <>
-                    <span className="mr-2">🔇</span>
-                    <span>Música OFF</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="mr-2">🔊</span>
-                    <span>Música ON</span>
-                  </>
-                )}
+                <span className="text-lg">
+                  {t.currentLanguage === 'es' ? '🇪🇸' : '🇺🇸'}
+                </span>
               </button>
-            ) : (
-              // Placeholder during SSR to maintain layout
-              <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-                <span className="mr-2">🔇</span>
-                <span>Música OFF</span>
-              </div>
-            )}
+
+              {/* Music Toggle Button - Only render after hydration to avoid SSR mismatch */}
+              {isAudioMounted ? (
+                <button
+                  onClick={() => {
+                    const wasMuted = preferences.muted;
+                    const newMutedState = toggleMute();
+                    
+                    // If user just unmuted, play music regardless of game state
+                    if (wasMuted && !newMutedState) {
+                      // User unmuted - play music immediately
+                      // Use setTimeout to ensure AudioManager state is updated after toggleMute
+                      setTimeout(() => {
+                        playMusic('thinkfast', true); // Force play even if muted check fails
+                      }, 50);
+                    } else if (!wasMuted && newMutedState) {
+                      // User muted - stop music
+                      stopMusic();
+                    }
+                  }}
+                  className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                    preferences.muted
+                      ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      : "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+                  }`}
+                  title={preferences.muted ? t.common.activateMusic : t.common.deactivateMusic}
+                >
+                  {preferences.muted ? (
+                    <>
+                      <span className="mr-2">🔇</span>
+                      <span>{t.common.musicOff}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="mr-2">🔊</span>
+                      <span>{t.common.musicOn}</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                // Placeholder during SSR to maintain layout
+                <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                  <span className="mr-2">🔇</span>
+                  <span>Música OFF</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Player Name Input */}
@@ -924,14 +952,14 @@ export default function Home() {
               htmlFor="playerName"
               className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
             >
-              Your Name
+              {t.player.yourName}
             </label>
             <input
               id="playerName"
               type="text"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="Enter your name"
+              placeholder={t.player.enterYourName}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               disabled={!!roomState}
             />
@@ -958,13 +986,13 @@ export default function Home() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Room Code:
+                    {t.room.roomCode}:
                   </span>
                   <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
                     {roomState.code}
                   </span>
                   <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-medium">
-                    {roomState.phase}
+                    {roomState.phase === 'LOBBY' ? t.game.phase.lobby : roomState.phase === 'IN_GAME' ? t.game.phase.inGame : t.game.phase.ended}
                   </span>
                 </div>
               </div>
@@ -973,7 +1001,7 @@ export default function Home() {
                   onClick={handleLeaveRoom}
                   className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
                 >
-                  Leave Room
+                  {t.room.leaveRoom}
                 </button>
               </div>
             </motion.div>
@@ -987,7 +1015,7 @@ export default function Home() {
                 disabled={!connected || !playerName.trim()}
                 className="w-full px-4 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
               >
-                Create Room
+                {t.room.createRoom}
               </button>
             </div>
           )}
@@ -999,9 +1027,9 @@ export default function Home() {
                 htmlFor="joinCode"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
               >
-                Join Room
+                {t.room.joinRoom}
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col md:flex-row gap-2">
                 <input
                   id="joinCode"
                   type="text"
@@ -1009,16 +1037,27 @@ export default function Home() {
                   onChange={(e) =>
                     setJoinCode(e.target.value.toUpperCase().slice(0, 5))
                   }
-                  placeholder="Room code"
+                  placeholder={t.room.roomCodePlaceholder}
                   maxLength={5}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono uppercase"
+                  className="w-full md:flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono uppercase"
                 />
                 <button
                   onClick={handleJoinRoom}
                   disabled={!connected || !playerName.trim() || !joinCode.trim()}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                  className="w-full md:w-auto px-4 py-3 md:py-2 md:px-6 text-white rounded-lg font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                  style={{ backgroundColor: '#CCFF99', color: '#1a1a1a' }}
+                  onMouseEnter={(e) => {
+                    if (!e.currentTarget.disabled) {
+                      e.currentTarget.style.backgroundColor = '#B8E68A';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!e.currentTarget.disabled) {
+                      e.currentTarget.style.backgroundColor = '#CCFF99';
+                    }
+                  }}
                 >
-                  Join
+                  {t.room.join}
                 </button>
               </div>
             </div>
@@ -1032,7 +1071,7 @@ export default function Home() {
               className="mt-6"
             >
               <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">
-                Players ({roomState.players.length})
+                {t.players.players} ({roomState.players.length})
               </h2>
               <div className="space-y-2 mb-6">
                 {roomState.players.map((player) => {
@@ -1054,25 +1093,26 @@ export default function Home() {
                         {isPlayerHost && (
                           <span
                             className="text-xs px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-full font-medium"
-                            title="Host"
+                            title={t.players.host}
                           >
-                            👑 Host
+                            👑 {t.players.host}
                           </span>
                         )}
                         {player.ready && (
                           <span
-                            className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full font-medium"
-                            title="Ready"
+                            className="text-xs px-2 py-0.5 dark:bg-green-900 dark:text-green-200 rounded-full font-medium"
+                            style={{ backgroundColor: '#CCFF99', color: '#1a1a1a' }}
+                            title={t.players.ready}
                           >
-                            ✓ Ready
+                            {t.players.ready}
                           </span>
                         )}
                         {!player.ready && (
                           <span
                             className="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-full font-medium"
-                            title="Not Ready"
+                            title={t.players.notReady}
                           >
-                            ○ Not Ready
+                            {t.players.notReady}
                           </span>
                         )}
                       </div>
@@ -1091,11 +1131,22 @@ export default function Home() {
                     onClick={handleReadyToggle}
                     className={`w-full px-4 py-3 rounded-lg font-medium transition-colors ${
                       currentPlayer.ready
-                        ? "bg-green-600 hover:bg-green-700 text-white"
+                        ? ""
                         : "bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white"
                     }`}
+                    style={currentPlayer.ready ? { backgroundColor: '#CCFF99', color: '#1a1a1a' } : {}}
+                    onMouseEnter={(e) => {
+                      if (currentPlayer.ready) {
+                        e.currentTarget.style.backgroundColor = '#B8E68A';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (currentPlayer.ready) {
+                        e.currentTarget.style.backgroundColor = '#CCFF99';
+                      }
+                    }}
                   >
-                    {currentPlayer.ready ? "✓ Ready" : "○ Not Ready"}
+                    {currentPlayer.ready ? t.players.ready : t.players.notReady}
                   </button>
                 </div>
               )}
@@ -1108,7 +1159,7 @@ export default function Home() {
                     disabled={!canStartGame}
                     className="w-full px-4 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                   >
-                    Start Game
+                    {t.game.startGame}
                   </button>
                   {!canStartGame && getStartGameMessage() && (
                     <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 text-center">
@@ -1117,6 +1168,97 @@ export default function Home() {
                   )}
                 </div>
               )}
+            </motion.div>
+          )}
+
+          {/* How to Play Section - Only show when not in game */}
+          {(!roomState || roomState.phase !== "IN_GAME") && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+              className="mt-8 p-6 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700/50 dark:to-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700"
+            >
+              <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">
+                {t.game.howToPlay}
+              </h2>
+              
+              <div className="space-y-5">
+                {/* Step 1: Turn-based */}
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center text-2xl">
+                    🃏
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-white">
+                      {t.game.howToPlaySteps.turnBased.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                      {t.game.howToPlaySteps.turnBased.description}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 2: Sequence */}
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center text-2xl">
+                    🔁
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-white">
+                      {t.game.howToPlaySteps.sequence.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                      {t.game.howToPlaySteps.sequence.description}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 3: Claim */}
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 dark:bg-green-900/30 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: '#CCFF99' }}>
+                    ✋
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-white">
+                      {t.game.howToPlaySteps.claim.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                      {t.game.howToPlaySteps.claim.description}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 4: Oops */}
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center text-2xl">
+                    😵‍💫
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-white">
+                      {t.game.howToPlaySteps.oops.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                      {t.game.howToPlaySteps.oops.description}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 5: Special */}
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center text-2xl">
+                    ⭐
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-white">
+                      {t.game.howToPlaySteps.special.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                      {t.game.howToPlaySteps.special.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           )}
 
@@ -1176,7 +1318,7 @@ export default function Home() {
               </AnimatePresence>
               <div className="mb-6">
                 <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
-                  🎮 Game In Progress
+                  {t.game.gameInProgress}
                 </h2>
 
                 {/* Word Timeline - Sequence visualization */}
@@ -1216,9 +1358,9 @@ export default function Home() {
                   let helpText: string | null = null;
                   if (myFlipCountRef.current < 5) {
                     if (isMyTurn && canFlip) {
-                      helpText = "¡Tócame para jugar tu próxima carta!";
+                      helpText = t.deck.touchToPlay;
                     } else if (!isMyTurn) {
-                      helpText = "Esperando...";
+                      helpText = t.deck.waiting;
                     }
                     // Don't show if claim active or no cards (handled by disabled state)
                   }
@@ -1375,7 +1517,7 @@ export default function Home() {
                         return (
                           <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
                             <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 text-center">
-                              ⏳ Esperando claim final para salir
+                              {t.players.waitingForFinalClaim}
                             </p>
                           </div>
                         );
@@ -1385,7 +1527,7 @@ export default function Home() {
                         return (
                           <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                             <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 text-center">
-                              👁️ Espectador
+                              {t.players.spectator}
                             </p>
                           </div>
                         );
@@ -1426,9 +1568,9 @@ export default function Home() {
                                   x: 0,
                                   scale: [1, 1.02, 1],
                                   boxShadow: [
-                                    "0 0 0 0px rgba(34, 197, 94, 0)",
-                                    "0 0 20px 4px rgba(34, 197, 94, 0.4)",
-                                    "0 0 0 0px rgba(34, 197, 94, 0)",
+                                    "0 0 0 0px rgba(204, 255, 153, 0)",
+                                    "0 0 20px 4px rgba(204, 255, 153, 0.4)",
+                                    "0 0 0 0px rgba(204, 255, 153, 0)",
                                   ],
                                 }
                               : { opacity: 1, x: 0 }
@@ -1451,9 +1593,10 @@ export default function Home() {
                           }
                           className={`flex items-center justify-between p-3 rounded-lg ${
                             isCurrentTurn
-                              ? "bg-green-100 dark:bg-green-900/30 border-2 border-green-500"
+                              ? "bg-green-100 dark:bg-green-900/30 border-2"
                               : "bg-gray-50 dark:bg-gray-700"
                           }`}
+                          style={isCurrentTurn ? { borderColor: '#CCFF99' } : {}}
                         >
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-gray-900 dark:text-white">
@@ -1461,26 +1604,26 @@ export default function Home() {
                             </span>
                             {isPlayerHost && (
                               <span
-                                className="text-xs px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-full font-medium"
+                                className="text-xs px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-full font-medium flex items-center justify-center min-w-[2rem] md:min-w-0"
                                 title="Host"
                               >
-                                👑 Host
+                                👑<span className="hidden md:inline ml-1">Host</span>
                               </span>
                             )}
                             {isCurrentTurn && (
                               <span
-                                className="text-xs px-2 py-0.5 bg-green-500 text-white rounded-full font-medium"
-                                title="Current Turn"
+                                className="text-xs px-2 py-0.5 bg-green-500 text-white rounded-full font-medium flex items-center justify-center min-w-[2rem] md:min-w-0"
+                                title={t.players.currentTurn}
                               >
-                                ⏱️ Turno
+                                ⏱️<span className="hidden md:inline ml-1">{t.players.turn}</span>
                               </span>
                             )}
                             {playerStatus === "PENDING_EXIT" && (
                               <span
                                 className="text-xs px-2 py-0.5 bg-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-full font-medium"
-                                title="Esperando claim final para salir"
+                                title={t.players.waitingForFinalClaim}
                               >
-                                ⏳ Esperando claim final para salir
+                                {t.players.waitingForFinalClaim}
                               </span>
                             )}
                             {playerStatus === "OUT" && (

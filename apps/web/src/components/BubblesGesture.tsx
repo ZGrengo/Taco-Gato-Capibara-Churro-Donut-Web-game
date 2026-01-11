@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAudio } from "../hooks/useAudio";
+import { useTranslations } from "../hooks/useTranslations";
 
 interface Bubble {
   id: string;
@@ -113,6 +114,7 @@ export function BubblesGesture({
   bubbleSizePx,
   onComplete,
 }: BubblesGestureProps) {
+  const t = useTranslations();
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [containerSize, setContainerSize] = useState({ width: 400, height: 300 });
@@ -238,11 +240,11 @@ export function BubblesGesture({
       <div className="mb-4">
         <div className="flex justify-between items-center mb-2">
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            Burbujas: {poppedCount} / {bubbles.length}
+            {t.gestures.bubbles.bubbles}: {poppedCount} / {bubbles.length}
           </span>
           {allPopped && !isExpired && (
             <span className="text-sm font-bold text-green-600 dark:text-green-400">
-              ✓ Completado!
+              ✓ {t.gestures.bubbles.completed}
             </span>
           )}
         </div>
@@ -299,7 +301,7 @@ export function BubblesGesture({
             <div className="text-center">
               <div className="text-4xl mb-2">⏱️</div>
               <div className="text-lg font-bold text-gray-700 dark:text-gray-300">
-                Tiempo agotado
+                {t.gestures.bubbles.timeUp}
               </div>
             </div>
           </div>
@@ -310,7 +312,7 @@ export function BubblesGesture({
             <div className="text-center">
               <div className="text-4xl mb-2">🎯</div>
               <div className="text-lg font-bold text-green-700 dark:text-green-300">
-                ¡Todas reventadas!
+                {t.gestures.bubbles.completed}
               </div>
             </div>
           </div>
