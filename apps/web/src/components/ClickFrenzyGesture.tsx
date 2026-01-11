@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { useAudio } from "../hooks/useAudio";
+import { useTranslations } from "../hooks/useTranslations";
 
 interface ClickFrenzyGestureProps {
   claimId: string;

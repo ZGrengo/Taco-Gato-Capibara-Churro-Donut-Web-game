@@ -21,6 +21,7 @@ interface DeckStackProps {
   onDisabledClick?: (reason: string) => void;
   helpText?: string | null; // Text to show in bubble above deck (null = hide)
   topCardRef?: React.RefObject<HTMLDivElement>; // Optional ref for top card (for future drag)
+  playerStatus?: string; // Player status (e.g., "PENDING_EXIT", "OUT", "ACTIVE")
 }
 
 // Deterministic rotations table to avoid flicker
@@ -164,7 +165,7 @@ function DesktopHelpBubble({
 }
 
 export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
-  ({ count, backSrc, isMyTurn = false, enabled = false, disabledReason, onFlip, onDisabledClick, helpText, topCardRef }, ref) => {
+  ({ count, backSrc, isMyTurn = false, enabled = false, disabledReason, onFlip, onDisabledClick, helpText, topCardRef, playerStatus }, ref) => {
     const shouldReduceMotion = useReducedMotion();
     const { playSfx } = useAudio();
     const t = useTranslations();
@@ -346,6 +347,9 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
     }, [count, playSfx]);
     
     if (count === 0) {
+      // If player is waiting for final claim, show "One last claim!" instead of "You won!"
+      const isWaitingForFinalClaim = playerStatus === "PENDING_EXIT";
+      
       return (
         <div
           ref={ref}
@@ -356,8 +360,10 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
             animate={{ scale: 1, opacity: 1 }}
             className="bg-green-500 text-white rounded-xl shadow-xl border-4 border-green-600 px-6 py-4 text-center"
           >
-            <p className="text-xl font-bold">🎉</p>
-            <p className="text-sm font-semibold mt-1">{t.deck.youWon}</p>
+            <p className="text-xl font-bold">{isWaitingForFinalClaim ? "⏳" : "🎉"}</p>
+            <p className="text-sm font-semibold mt-1">
+              {isWaitingForFinalClaim ? t.deck.oneLastClaim : t.deck.youWon}
+            </p>
           </motion.div>
         </div>
       );

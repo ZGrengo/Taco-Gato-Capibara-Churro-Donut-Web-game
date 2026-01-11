@@ -39,15 +39,15 @@ const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001"
 
 // Card Display Component - memoized to prevent unnecessary re-renders
 const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
-  const bgColorClasses = {
-    yellow: "bg-yellow-400",
-    orange: "bg-orange-400",
-    green: "bg-green-400",
-    blue: "bg-blue-400",
-    red: "bg-red-400",
+  const bgColorMap: Record<string, string> = {
+    yellow: "#FFCC99",
+    orange: "#8FFFDA",
+    green: "#CC99FF",
+    blue: "#CCFF99",
+    red: "#FF99CC",
   };
 
-  const bgColor = bgColorClasses[card.visual.bgColor] || "bg-gray-400";
+  const bgColor = bgColorMap[card.visual.bgColor] || "#9CA3AF";
   const [imageError, setImageError] = useState(false);
 
   if (card.type === "SPECIAL" && card.visual.kind === "special") {
@@ -74,7 +74,8 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.8, opacity: 0 }}
         transition={{ duration: 0.3 }}
-        className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
+        className="rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden"
+        style={{ backgroundColor: bgColor }}
       >
         {!imageError && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -116,7 +117,8 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
       animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.8, opacity: 0 }}
       transition={{ duration: 0.3 }}
-      className={`${bgColor} rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden`}
+      className="rounded-xl shadow-xl border-4 border-gray-300 dark:border-gray-600 w-56 h-72 mx-auto flex flex-col items-center justify-center p-4 relative overflow-hidden"
+      style={{ backgroundColor: bgColor }}
     >
       {!imageError && (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -255,6 +257,23 @@ export default function Home() {
     socket.emit(EVENTS.ROOM_LEAVE);
     setRoomState(null);
     setRoomCode("");
+  };
+
+  const handleCopyRoomCode = async () => {
+    if (!roomState?.code) return;
+    try {
+      await navigator.clipboard.writeText(roomState.code);
+      // Show toast notification
+      const toastKey = Date.now();
+      setCopyToast({ key: toastKey });
+      
+      // Clear toast after 2 seconds
+      setTimeout(() => {
+        setCopyToast((prev) => prev?.key === toastKey ? null : prev);
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to copy room code:', error);
+    }
   };
 
   const handleReadyToggle = () => {
@@ -414,6 +433,7 @@ export default function Home() {
   
   // Toast state for disabled deck feedback
   const [disabledToast, setDisabledToast] = useState<{ message: string; key: number } | null>(null);
+  const [copyToast, setCopyToast] = useState<{ key: number } | null>(null);
   
   // Track number of flips the local player has made (for hiding hint bubble after 5 turns)
   const myFlipCountRef = useRef<number>(0);
@@ -442,12 +462,19 @@ export default function Home() {
   // Translations hook
   const t = useTranslations();
   
+  // Track if component is mounted to avoid hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
+  
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  
   // Update page title based on language
   useEffect(() => {
-    if (typeof document !== 'undefined') {
+    if (typeof document !== 'undefined' && isMounted) {
       document.title = t.currentLanguage === 'es' ? '¡Piensa Rápido!' : 'Think Fast!';
     }
-  }, [t.currentLanguage]);
+  }, [t.currentLanguage, isMounted]);
   
   // Progressive throw rate hook (for card_throw pitch)
   const throwRate = useThrowRate(
@@ -851,7 +878,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen p-8 dark:from-gray-900 dark:to-gray-800" style={{ background: '#99CCFF' }}>
+    <main className="min-h-screen p-8 dark:from-gray-900 dark:to-gray-800" style={{ background: '#93C5F9' }}>
       <div className="max-w-2xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -859,10 +886,10 @@ export default function Home() {
           className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8"
         >
           <h1 className="text-4xl font-bold mb-2 text-gray-900 dark:text-white">
-            {t.common.gameTitle}
+            {isMounted ? t.common.gameTitle : '¡Piensa Rápido!'}
           </h1>
-          <p className="text-lg font-semibold text-indigo-600 dark:text-indigo-400 mb-6 tracking-wide">
-            {t.common.wordSequence}
+          <p className="text-base font-semibold mb-6 tracking-wide" style={{ color: '#64748b' }}>
+            {isMounted ? t.common.wordSequence : 'TACO - GATO - CAPIBARA - CHURRO - DONUT'}
           </p>
 
           {/* Connection Status, Language Toggle, and Music Toggle */}
@@ -890,11 +917,11 @@ export default function Home() {
                 onClick={() => {
                   t.toggleLanguage();
                 }}
-                className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium transition-colors bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                className="inline-flex items-center justify-center h-9 px-3 rounded-lg text-sm font-medium transition-colors bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
                 title={t.currentLanguage === 'es' ? t.common.changeToEnglish : t.common.changeToSpanish}
               >
-                <span className="text-lg">
-                  {t.currentLanguage === 'es' ? '🇪🇸' : '🇺🇸'}
+                <span className="text-xs font-semibold">
+                  {t.currentLanguage === 'es' ? 'ES' : 'EN'}
                 </span>
               </button>
 
@@ -917,7 +944,7 @@ export default function Home() {
                       stopMusic();
                     }
                   }}
-                  className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                  className={`inline-flex items-center justify-center h-9 px-3 rounded-lg text-sm font-medium transition-colors ${
                     preferences.muted
                       ? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
                       : "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 hover:bg-indigo-200 dark:hover:bg-indigo-800"
@@ -938,7 +965,7 @@ export default function Home() {
                 </button>
               ) : (
                 // Placeholder during SSR to maintain layout
-                <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                <div className="inline-flex items-center justify-center h-9 px-3 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
                   <span className="mr-2">🔇</span>
                   <span>Música OFF</span>
                 </div>
@@ -981,26 +1008,50 @@ export default function Home() {
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="mb-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800"
+              className="mb-4 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600"
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 relative">
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     {t.room.roomCode}:
                   </span>
-                  <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
-                    {roomState.code}
-                  </span>
+                  <button
+                    onClick={handleCopyRoomCode}
+                    className="text-2xl font-bold font-mono flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer group px-2 py-1 -mx-2 -my-1 rounded"
+                    title="Click para copiar"
+                  >
+                    <span className="transition-transform group-hover:scale-110">📋</span>
+                    <span>{roomState.code}</span>
+                  </button>
                   <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-medium">
                     {roomState.phase === 'LOBBY' ? t.game.phase.lobby : roomState.phase === 'IN_GAME' ? t.game.phase.inGame : t.game.phase.ended}
                   </span>
                 </div>
+                
+                {/* Copy toast notification */}
+                <AnimatePresence>
+                  {copyToast && (
+                    <motion.div
+                      key={copyToast.key}
+                      className="absolute -top-12 left-0 pointer-events-none z-50"
+                      initial={{ opacity: 0, y: 4, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.9 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <div className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap" style={{ backgroundColor: '#CCFF99', color: '#1a1a1a' }}>
+                        {t.room.codeCopied}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
               <div className="flex items-center justify-between mt-3">
                 <button
                   onClick={handleLeaveRoom}
-                  className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                  className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-1.5 transition-colors"
                 >
+                  <span>🚪</span>
                   {t.room.leaveRoom}
                 </button>
               </div>
@@ -1157,7 +1208,20 @@ export default function Home() {
                   <button
                     onClick={handleStartGame}
                     disabled={!canStartGame}
-                    className="w-full px-4 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                    className="w-full px-4 py-3 text-white rounded-lg font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                    style={{
+                      backgroundColor: canStartGame ? '#1E3A8A' : undefined,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (canStartGame) {
+                        e.currentTarget.style.backgroundColor = '#1E40AF';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (canStartGame) {
+                        e.currentTarget.style.backgroundColor = '#1E3A8A';
+                      }
+                    }}
                   >
                     {t.game.startGame}
                   </button>
@@ -1184,9 +1248,9 @@ export default function Home() {
               </h2>
               
               <div className="space-y-5">
-                {/* Step 1: Turn-based */}
+                {/* Step 1: Turn-based - Yellow card color */}
                 <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center text-2xl">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: '#FFCC99' }}>
                     🃏
                   </div>
                   <div className="flex-1">
@@ -1199,9 +1263,9 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Step 2: Sequence */}
+                {/* Step 2: Sequence - Orange card color */}
                 <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center text-2xl">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: '#8FFFDA' }}>
                     🔁
                   </div>
                   <div className="flex-1">
@@ -1214,9 +1278,9 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Step 3: Claim */}
+                {/* Step 3: Claim - Green card color */}
                 <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 dark:bg-green-900/30 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: '#CCFF99' }}>
+                  <div className="flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: '#CC99FF' }}>
                     ✋
                   </div>
                   <div className="flex-1">
@@ -1229,9 +1293,9 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Step 4: Oops */}
+                {/* Step 4: Oops - Red from Oops message (bg-red-500 = #ef4444) */}
                 <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center text-2xl">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: '#ef4444' }}>
                     😵‍💫
                   </div>
                   <div className="flex-1">
@@ -1244,9 +1308,9 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Step 5: Special */}
+                {/* Step 5: Special - Blue card color */}
                 <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center text-2xl">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: '#CCFF99' }}>
                     ⭐
                   </div>
                   <div className="flex-1">
@@ -1377,6 +1441,7 @@ export default function Home() {
                         onFlip={handleFlipCard}
                         onDisabledClick={handleDisabledDeckClick}
                         helpText={helpText}
+                        playerStatus={socketId && roomState.game.playerStatuses ? roomState.game.playerStatuses[socketId] : undefined}
                       />
                       
                       {/* Disabled toast */}
@@ -1394,7 +1459,7 @@ export default function Home() {
                               {disabledToast.message}
                             </div>
                           </motion.div>
-                        )}
+                  )}
                       </AnimatePresence>
                 </div>
                   );
@@ -1656,11 +1721,56 @@ export default function Home() {
             >
               <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
                 <p className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                  Game Ended
+                  {t.game.phase.ended}
                 </p>
-                <p className="text-gray-600 dark:text-gray-400">
-                  The game has ended.
+                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  {t.game.gameEnded}
                 </p>
+                
+                {/* Winner/Loser Message */}
+                {socketId && roomState.game && (() => {
+                  const myHandCount = roomState.game.handCounts[socketId] ?? 0;
+                  const myStatus = roomState.game.playerStatuses?.[socketId] || "ACTIVE";
+                  
+                  // Player won if they have 0 cards
+                  const isWinner = myHandCount === 0;
+                  // Player lost if they are OUT and have cards (last one to exit)
+                  const isLoser = myStatus === "OUT" && myHandCount > 0;
+                  
+                  if (isWinner) {
+                    return (
+                      <motion.div
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: 0.2, duration: 0.3 }}
+                        className="mt-4"
+                      >
+                        <div className="bg-green-500 text-white rounded-xl shadow-xl border-4 border-green-600 px-6 py-4 inline-block">
+                          <p className="text-xl font-bold mb-1">🎉</p>
+                          <p className="text-lg font-semibold">{t.deck.youWon}</p>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+                  
+                  if (isLoser) {
+                    return (
+                      <motion.div
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: 0.2, duration: 0.3 }}
+                        className="mt-4"
+                      >
+                        <div className="bg-red-500 text-white rounded-xl shadow-xl border-4 border-red-600 px-6 py-4 inline-block">
+                          <p className="text-xl font-bold mb-1">😢</p>
+                          <p className="text-lg font-semibold">{t.deck.youLost}</p>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+                  
+                  return null;
+                })()}
               </div>
             </motion.div>
           )}

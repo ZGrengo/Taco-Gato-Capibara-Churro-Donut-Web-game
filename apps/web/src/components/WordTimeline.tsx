@@ -79,10 +79,10 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
 
           if (isCurrent) {
             // Current word: larger, bold, highlighted
-            className += " uppercase font-bold text-yellow-300 dark:text-yellow-400 text-base";
+            className += " uppercase font-bold text-base";
           } else if (isNext) {
             // Next word: smaller, reduced opacity
-            className += " text-slate-400 dark:text-slate-500 opacity-70 text-xs";
+            className += " text-xs";
           } else {
             // Previous word: smaller, reduced opacity
             className += " text-slate-500 dark:text-slate-600 opacity-60 text-xs";
@@ -107,6 +107,7 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
               <motion.span
                 key={`mobile-${word}-${currentIndex}-${anticipationKey}-${isCurrent ? pulseKey : 0}`}
                 className={className}
+                style={isCurrent ? { color: '#CCFF99' } : isNext ? { color: '#FFCC99', opacity: 0.9 } : {}}
                 initial={isCurrent && !shouldReduceMotion ? { scale: 1 } : false}
                 animate={
                   isCurrent
@@ -122,9 +123,9 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
                           return {
                             scale: [1, 1.06, 1],
                             textShadow: [
-                              "0 0 8px rgba(251, 191, 36, 0.6), 0 0 16px rgba(251, 191, 36, 0.4)",
-                              "0 0 24px rgba(251, 191, 36, 1), 0 0 40px rgba(251, 191, 36, 0.6)",
-                              "0 0 8px rgba(251, 191, 36, 0.6), 0 0 16px rgba(251, 191, 36, 0.4)",
+                              "0 0 8px rgba(204, 255, 153, 0.6), 0 0 16px rgba(204, 255, 153, 0.4)",
+                              "0 0 24px rgba(204, 255, 153, 1), 0 0 40px rgba(204, 255, 153, 0.6)",
+                              "0 0 8px rgba(204, 255, 153, 0.6), 0 0 16px rgba(204, 255, 153, 0.4)",
                             ],
                           };
                         }
@@ -133,16 +134,16 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
                           return {
                             scale: [1, 1.08, 1],
                             textShadow: [
-                              "0 0 8px rgba(251, 191, 36, 0.5), 0 0 16px rgba(251, 191, 36, 0.3)",
-                              "0 0 12px rgba(251, 191, 36, 0.7), 0 0 24px rgba(251, 191, 36, 0.5)",
-                              "0 0 8px rgba(251, 191, 36, 0.5), 0 0 16px rgba(251, 191, 36, 0.3)",
+                              "0 0 8px rgba(204, 255, 153, 0.5), 0 0 16px rgba(204, 255, 153, 0.3)",
+                              "0 0 12px rgba(204, 255, 153, 0.7), 0 0 24px rgba(204, 255, 153, 0.5)",
+                              "0 0 8px rgba(204, 255, 153, 0.5), 0 0 16px rgba(204, 255, 153, 0.3)",
                             ],
                           };
                         }
                         
                         return {
                           scale: 1,
-                          textShadow: "0 0 8px rgba(251, 191, 36, 0.5), 0 0 16px rgba(251, 191, 36, 0.3)",
+                          textShadow: "0 0 8px rgba(204, 255, 153, 0.5), 0 0 16px rgba(204, 255, 153, 0.3)",
                         };
                       })()
                     : {}
@@ -200,12 +201,12 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
 
         if (isCurrent) {
           // Current word: bold, uppercase, highlighted with glow
-          className += " uppercase font-bold text-yellow-300 dark:text-yellow-400";
-          textColor = "text-yellow-300 dark:text-yellow-400";
+          className += " uppercase font-bold";
+          textColor = "#CCFF99";
         } else if (isNext) {
           // Next word: intermediate color with underline
-          className += " text-slate-300 dark:text-slate-400 underline decoration-dotted decoration-slate-400 dark:decoration-slate-500";
-          textColor = "text-slate-300 dark:text-slate-400";
+          className += " underline decoration-dotted";
+          textColor = "#FFCC99";
         } else {
           // Past/Future words: muted
           className += " text-slate-500 dark:text-slate-600 opacity-60";
@@ -232,6 +233,7 @@ export function WordTimeline({ spokenWord, currentWord, anticipationKey = 0 }: W
             <motion.span
               key={`${word}-${currentIndex}-${anticipationKey}-${isCurrent ? pulseKey : 0}`} // Key includes pulseKey to trigger pulse on word change
               className={className}
+              style={{ color: textColor }}
               initial={isCurrent && !shouldReduceMotion ? { scale: 1 } : false}
               animate={
                 isCurrent

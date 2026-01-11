@@ -42,6 +42,7 @@ export interface Translations {
     join: string;
     roomCodePlaceholder: string;
     leaveRoom: string;
+    codeCopied: string;
   };
 
   // Game
@@ -49,6 +50,7 @@ export interface Translations {
     gameInProgress: string;
     startGame: string;
     gameHasAlreadyStarted: string;
+    gameEnded: string;
     needAtLeast2Players: string;
     playersNotReady: string;
     playerNotReady: string;
@@ -99,6 +101,8 @@ export interface Translations {
     touchYourDeckToPlay: string;
     waiting: string;
     youWon: string;
+    youLost: string;
+    oneLastClaim: string;
     flipCard: string;
     cannotFlipCard: string;
   };
@@ -165,11 +169,13 @@ const translations: Record<Language, Translations> = {
       join: 'Unirse',
       roomCodePlaceholder: 'Código de sala',
       leaveRoom: 'Salir de Sala',
+      codeCopied: '¡Código copiado!',
     },
     game: {
       gameInProgress: '🎮 Partida en Curso',
       startGame: 'Iniciar Partida',
       gameHasAlreadyStarted: 'La partida ya ha comenzado',
+      gameEnded: 'La partida ha terminado.',
       needAtLeast2Players: 'Se necesitan al menos 2 jugadores para empezar',
       playersNotReady: 'jugadores no están listos',
       playerNotReady: 'jugador no está listo',
@@ -217,6 +223,8 @@ const translations: Record<Language, Translations> = {
       touchYourDeckToPlay: 'Toca tu mazo para jugar',
       waiting: 'Esperando...',
       youWon: '¡Ganaste!',
+      youLost: '¡Perdiste!',
+      oneLastClaim: '¡Un último claim!',
       flipCard: 'Voltear carta',
       cannotFlipCard: 'No se puede voltear carta',
     },
@@ -279,11 +287,13 @@ const translations: Record<Language, Translations> = {
       join: 'Join',
       roomCodePlaceholder: 'Room code',
       leaveRoom: 'Leave Room',
+      codeCopied: 'Code copied!',
     },
     game: {
       gameInProgress: '🎮 Game In Progress',
       startGame: 'Start Game',
       gameHasAlreadyStarted: 'Game has already started',
+      gameEnded: 'The game has ended.',
       needAtLeast2Players: 'Need at least 2 players to start',
       playersNotReady: 'player(s) not ready',
       playerNotReady: 'player not ready',
@@ -331,6 +341,8 @@ const translations: Record<Language, Translations> = {
       touchYourDeckToPlay: 'Touch your deck to play',
       waiting: 'Waiting...',
       youWon: 'You Won!',
+      youLost: 'You Lost!',
+      oneLastClaim: 'One last claim!',
       flipCard: 'Flip card',
       cannotFlipCard: 'Cannot flip card',
     },
