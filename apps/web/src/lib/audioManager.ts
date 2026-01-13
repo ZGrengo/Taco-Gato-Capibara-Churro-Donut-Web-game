@@ -57,6 +57,7 @@ class AudioManagerClass {
   private audioUnlocked = false;
   private preferences: AudioPreferences = DEFAULT_PREFERENCES;
   private sfxCache: Map<SfxName, HTMLAudioElement> = new Map();
+  private sfxUrlCache: Map<SfxName, string> = new Map(); // Store working URLs
   private musicCache: Map<MusicName, HTMLAudioElement> = new Map();
   private currentMusic: HTMLAudioElement | null = null;
   private unlockCallbacks: Set<() => void> = new Set();
@@ -166,7 +167,8 @@ class AudioManagerClass {
     
     if (!this.sfxCache.has(name)) {
       // Try WAV first (preferred format)
-      const wavAudio = new Audio(`/audio/sfx/${audioFileName}.wav`);
+      const wavUrl = `/audio/sfx/${audioFileName}.wav`;
+      const wavAudio = new Audio(wavUrl);
       wavAudio.preload = 'auto';
       
       let audioLoaded = false;
@@ -176,6 +178,7 @@ class AudioManagerClass {
         if (!audioLoaded) {
           audioLoaded = true;
           this.sfxCache.set(name, wavAudio);
+          this.sfxUrlCache.set(name, wavUrl); // Store working URL
         }
       }, { once: true });
       
@@ -184,13 +187,15 @@ class AudioManagerClass {
         if (!audioLoaded) {
           console.debug(`[AudioManager] WAV not found for ${audioFileName}, trying MP3 fallback...`);
           // Try MP3 as fallback (use audioFileName for consistency)
-          const mp3Audio = new Audio(`/audio/sfx/${audioFileName}.mp3`);
+          const mp3Url = `/audio/sfx/${audioFileName}.mp3`;
+          const mp3Audio = new Audio(mp3Url);
           mp3Audio.preload = 'auto';
           
           mp3Audio.addEventListener('canplaythrough', () => {
             if (!audioLoaded) {
               audioLoaded = true;
               this.sfxCache.set(name, mp3Audio);
+              this.sfxUrlCache.set(name, mp3Url); // Store working URL
             }
           }, { once: true });
           
@@ -199,6 +204,7 @@ class AudioManagerClass {
               console.debug(`[AudioManager] SFX file not found: ${name}.wav or ${name}.mp3 (this is expected until audio files are added)`);
               // Cache a dummy audio element to prevent repeated attempts
               this.sfxCache.set(name, mp3Audio);
+              // Don't store URL if both formats failed
             }
           }, { once: true });
           
@@ -212,6 +218,30 @@ class AudioManagerClass {
     }
     
     return this.sfxCache.get(name) || null;
+  }
+
+  /**
+   * Get the URL for an SFX (for direct cloning)
+   */
+  private getSfxUrl(name: SfxName): string | null {
+    // If we have a cached URL, use it
+    if (this.sfxUrlCache.has(name)) {
+      return this.sfxUrlCache.get(name) || null;
+    }
+    
+    // Otherwise, try to get it from the cached audio element
+    const audio = this.sfxCache.get(name);
+    if (audio) {
+      const url = audio.currentSrc || audio.src;
+      if (url && url !== '') {
+        this.sfxUrlCache.set(name, url);
+        return url;
+      }
+    }
+    
+    // Fallback: construct URL directly (WAV first, then MP3)
+    const audioFileName = name === 'special_draw' ? 'special_circle' : name;
+    return `/audio/sfx/${audioFileName}.wav`;
   }
 
   /**
@@ -311,10 +341,8 @@ class AudioManagerClass {
       if (rate !== 1.0) {
       }
       
-      // Clone the audio element to allow overlapping sounds
-      // IMPORTANT: Create a new Audio instance with the same src for better playbackRate support
-      // Using currentSrc (the actual source being used) for more reliable cloning
-      const audioSrc = audio.currentSrc || audio.src;
+      // Get the URL for this SFX (prefer cached URL, fallback to constructing it)
+      const audioSrc = this.getSfxUrl(name);
       
       if (!audioSrc || audioSrc === '') {
         console.warn(`[AudioManager] Audio source is empty for "${name}", cannot play`);
@@ -322,6 +350,7 @@ class AudioManagerClass {
       }
       
       // Create a new Audio instance (better than cloneNode for playbackRate control)
+      // Use the URL directly to ensure it works even if the cached audio isn't ready
       const clone = new Audio(audioSrc);
       
       // Apply settings BEFORE load/play
@@ -333,29 +362,50 @@ class AudioManagerClass {
       // Some browsers ignore playbackRate if set after load/play
       clone.playbackRate = clampedRate;
       
-      // Play the cloned audio
-      const playPromise = clone.play();
+      // Preload the audio to ensure it's ready
+      clone.preload = 'auto';
       
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            // Verify playbackRate was applied correctly after play
-            // Some browsers reset it during play, so we check and reapply if needed
-            if (Math.abs(clone.playbackRate - clampedRate) > 0.001) {
-              console.warn(`[AudioManager] PlaybackRate was reset for "${name}": expected ${clampedRate.toFixed(3)}, got ${clone.playbackRate.toFixed(3)}. Re-applying...`);
-              clone.playbackRate = clampedRate;
-              
-              // Some browsers need a second attempt after a small delay
-              setTimeout(() => {
-                if (Math.abs(clone.playbackRate - clampedRate) > 0.001 && !clone.paused) {
-                  clone.playbackRate = clampedRate;
-                }
-              }, 10);
-            }
-          })
-          .catch((error) => {
-            console.debug(`[AudioManager] Failed to play SFX "${name}":`, error);
-          });
+      // Play the cloned audio
+      // If the audio is already loaded (from browser cache), play() will work immediately
+      // Otherwise, we'll wait for it to load
+      const attemptPlay = () => {
+        const playPromise = clone.play();
+        
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              // Verify playbackRate was applied correctly after play
+              // Some browsers reset it during play, so we check and reapply if needed
+              if (Math.abs(clone.playbackRate - clampedRate) > 0.001) {
+                console.warn(`[AudioManager] PlaybackRate was reset for "${name}": expected ${clampedRate.toFixed(3)}, got ${clone.playbackRate.toFixed(3)}. Re-applying...`);
+                clone.playbackRate = clampedRate;
+                
+                // Some browsers need a second attempt after a small delay
+                setTimeout(() => {
+                  if (Math.abs(clone.playbackRate - clampedRate) > 0.001 && !clone.paused) {
+                    clone.playbackRate = clampedRate;
+                  }
+                }, 10);
+              }
+            })
+            .catch((error) => {
+              console.debug(`[AudioManager] Failed to play SFX "${name}":`, error);
+            });
+        }
+      };
+      
+      // Try to play immediately if ready, otherwise wait for load
+      if (clone.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+        attemptPlay();
+      } else {
+        // Wait for audio to be ready
+        const onCanPlay = () => {
+          attemptPlay();
+          clone.removeEventListener('canplaythrough', onCanPlay);
+        };
+        clone.addEventListener('canplaythrough', onCanPlay, { once: true });
+        // Trigger load explicitly
+        clone.load();
       }
       
       // Clean up the clone after it finishes playing

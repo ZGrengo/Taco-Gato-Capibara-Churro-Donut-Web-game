@@ -324,39 +324,52 @@ export function CircleGesture({
       : "";
 
   return (
-    <div className="w-full">
-      <div className="text-center mb-4">
-        <div className="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-2">
-          {timeLeftSeconds}s
+    <div className="w-full flex flex-col items-center justify-center">
+      {/* Window container with solid blue background */}
+      <div className="w-full max-w-md bg-blue-600 dark:bg-blue-700 rounded-xl shadow-2xl overflow-hidden">
+        {/* Title section */}
+        <div className="bg-blue-700 dark:bg-blue-800 px-4 py-3 border-b border-blue-500 dark:border-blue-600">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="text-xl font-bold text-white mb-1">
+                {t.gestures.circle.drawCircle}
+              </div>
+              <div className="flex items-center gap-4 text-sm text-blue-100">
+                <span className="font-semibold">
+                  {timeLeftSeconds}s
+                </span>
+                {isComplete && !isExpired && (
+                  <span className="font-bold text-green-300">
+                    ✓ {t.gestures.circle.completed}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-blue-100">
+            {isComplete
+              ? t.gestures.circle.completed
+              : hasError
+                ? `${t.gestures.circle.tryAgain} - ${t.gestures.circle.drawCircleAroundCard}`
+                : t.gestures.circle.drawCircleAroundCard}
+          </p>
         </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          Tiempo restante
-        </div>
-      </div>
 
-      <div className="mb-4">
-        <p className="text-center text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-          {isComplete
-            ? `✓ ${t.gestures.circle.completed}`
-            : hasError
-              ? `${t.gestures.circle.tryAgain} - ${t.gestures.circle.drawCircleAroundCard}`
-              : t.gestures.circle.drawCircleAroundCard}
-        </p>
-      </div>
-
-      {/* Drawing area */}
-      <div
-        ref={containerRef}
-        className="relative w-full h-64 bg-purple-50 dark:bg-purple-900/20 rounded-xl border-2 border-purple-300 dark:border-purple-700 overflow-hidden touch-none select-none"
-        style={{ 
-          minHeight: "256px",
-          touchAction: "none", // Prevent default touch behaviors (scroll, zoom, etc.)
-        }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-      >
+        {/* Gesture area with opacity */}
+        <div className="p-4 pb-6 bg-blue-600 dark:bg-blue-700">
+          <div
+            ref={containerRef}
+            className="relative w-full bg-purple-50 dark:bg-purple-900/20 rounded-xl border-2 border-purple-300 dark:border-purple-600 overflow-hidden touch-none select-none"
+            style={{ 
+              height: "clamp(240px, 40vh, 340px)",
+              width: "100%",
+              touchAction: "none", // Prevent default touch behaviors (scroll, zoom, etc.)
+            }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+          >
         {/* Target area (card center) - invisible reference point */}
         <div
           ref={targetRef}
@@ -408,6 +421,8 @@ export function CircleGesture({
             </div>
           </div>
         )}
+          </div>
+        </div>
       </div>
     </div>
   );

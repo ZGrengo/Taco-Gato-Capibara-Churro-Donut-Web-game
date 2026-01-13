@@ -147,8 +147,16 @@ export class BotManager {
       if (this.botTimeouts.has(botId)) {
         return;
       }
-      // Human-like delay: 300-900ms
-      const delay = 300 + Math.random() * 600;
+      
+      // Longer delay for gestures to simulate completion time
+      let delay: number;
+      if (claim.gestureType) {
+        // For gestures: 2000-4000ms (2-4 seconds) to simulate gesture completion
+        delay = 2000 + Math.random() * 2000;
+      } else {
+        // Regular claim: 300-900ms
+        delay = 300 + Math.random() * 600;
+      }
       
       const timeout = setTimeout(() => {
         this.botTimeouts.delete(botId);

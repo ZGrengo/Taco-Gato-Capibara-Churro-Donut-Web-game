@@ -26,6 +26,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ClickFrenzyGesture } from "../components/ClickFrenzyGesture";
 import { BubblesGesture } from "../components/BubblesGesture";
 import { CircleGesture } from "../components/CircleGesture";
+import { GestureOverlay } from "../components/GestureOverlay";
 import { DeckStack } from "../components/DeckStack";
 import { PileCenter } from "../components/PileCenter";
 import { FlyingCardLayer } from "../components/FlyingCardLayer";
@@ -455,8 +456,14 @@ export default function Home() {
   
   // Track previous phase to detect game end
   const prevPhaseRef = useRef<string | null>(null);
+  // Track previous player status to detect final win (PENDING_EXIT -> OUT with 0 cards)
+  const prevPlayerStatusRef = useRef<string | null>(null);
   // Track previous phase for music control
   const prevPhaseForMusicRef = useRef<string | null>(null);
+  
+  // Track selected win/lose messages to ensure they don't change on re-renders
+  const selectedWinMessageRef = useRef<string | null>(null);
+  const selectedLoseMessageRef = useRef<string | null>(null);
 
   // Track last local flip's flying card ID to know when to play card_throw sound
   const lastLocalFlipCardIdRef = useRef<string | null>(null);
@@ -836,6 +843,29 @@ export default function Home() {
   }, [roomState?.phase, preferences.musicMuted, playMusic]);
 
   // Detect game end and play appropriate sound
+  // Detect final win: transition from PENDING_EXIT to OUT with 0 cards
+  useEffect(() => {
+    if (!roomState?.game || !socketId) {
+      if (roomState?.game && socketId) {
+        const myStatus = roomState.game.playerStatuses?.[socketId] || "ACTIVE";
+        prevPlayerStatusRef.current = myStatus;
+      }
+      return;
+    }
+
+    const myHandCount = roomState.game.handCounts[socketId] ?? 0;
+    const myStatus = roomState.game.playerStatuses?.[socketId] || "ACTIVE";
+    const prevStatus = prevPlayerStatusRef.current;
+
+    // Detect transition from PENDING_EXIT to OUT with 0 cards (final win!)
+    if (prevStatus === "PENDING_EXIT" && myStatus === "OUT" && myHandCount === 0) {
+      // Player completed the final claim and won!
+      playSfx('game_win');
+    }
+
+    prevPlayerStatusRef.current = myStatus;
+  }, [roomState?.game, socketId, playSfx]);
+
   useEffect(() => {
     if (roomState?.phase === "ENDED" && prevPhaseRef.current === "IN_GAME") {
       // Game just ended
@@ -843,13 +873,16 @@ export default function Home() {
         const myHandCount = roomState.game.handCounts[socketId] ?? 0;
         const myStatus = roomState.game.playerStatuses?.[socketId] || "ACTIVE";
         
-        // If player is OUT and has cards, they lost
-        // Note: If player has 0 cards, DeckStack already plays game_win, so we don't double-play here
-        if (myStatus === "OUT" && myHandCount > 0) {
-          // Player was eliminated (lost)
+        // Player won if they have 0 cards (regardless of status)
+        if (myHandCount === 0) {
+          // Player won! Play victory sound
+          // (This covers both cases: direct win and final claim completion)
+          playSfx('game_win');
+        } else {
+          // Player lost if they have cards (didn't win)
+          // This covers all cases: OUT with cards, ACTIVE with cards, etc.
           playSfx('game_lose');
         }
-        // Note: game_win is already played by DeckStack when count becomes 0
       }
     }
     prevPhaseRef.current = roomState?.phase || null;
@@ -892,15 +925,15 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8"
         >
-          <h1 className="text-4xl font-bold mb-2 text-gray-900 dark:text-white">
+          <h1 className="text-4xl font-bold mb-2 text-gray-900 dark:text-white text-center md:text-left">
             {isMounted ? t.common.gameTitle : '¡Piensa Rápido!'}
           </h1>
-          <p className="text-base font-semibold mb-6 tracking-wide" style={{ color: '#64748b' }}>
+          <p className="text-base font-semibold mb-6 tracking-wide text-center md:text-left" style={{ color: '#64748b' }}>
             {isMounted ? t.common.wordSequence : 'TACO - GATO - CAPIBARA - CHURRO - DONUT'}
           </p>
 
           {/* Connection Status, Language Toggle, and Music Toggle */}
-          <div className="mb-6 flex items-center justify-between">
+          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div
               className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                 connected
@@ -947,21 +980,21 @@ export default function Home() {
                 >
                   {preferences.sfxMuted ? (
                     <>
-                      <span className="mr-2">🔇</span>
-                      <span>{t.common.soundOff}</span>
+                      <span className="mr-1.5">🔇</span>
+                      <span>{t.common.sound}</span>
                     </>
                   ) : (
                     <>
-                      <span className="mr-2">🔊</span>
-                      <span>{t.common.soundOn}</span>
+                      <span className="mr-1.5">🔊</span>
+                      <span>{t.common.sound}</span>
                     </>
                   )}
                 </button>
               ) : (
                 // Placeholder during SSR to maintain layout
                 <div className="inline-flex items-center justify-center h-9 px-3 rounded-lg text-sm font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
-                  <span className="mr-2">🔊</span>
-                  <span>Sonido ON</span>
+                  <span className="mr-1.5">🔊</span>
+                  <span>Sonido</span>
                 </div>
               )}
 
@@ -993,21 +1026,21 @@ export default function Home() {
                 >
                   {preferences.musicMuted ? (
                     <>
-                      <span className="mr-2">🔇</span>
-                      <span>{t.common.musicOff}</span>
+                      <span className="mr-1.5">🔇</span>
+                      <span>{t.common.music}</span>
                     </>
                   ) : (
                     <>
-                      <span className="mr-2">🔊</span>
-                      <span>{t.common.musicOn}</span>
+                      <span className="mr-1.5">🔊</span>
+                      <span>{t.common.music}</span>
                     </>
                   )}
                 </button>
               ) : (
                 // Placeholder during SSR to maintain layout
                 <div className="inline-flex items-center justify-center h-9 px-3 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-                  <span className="mr-2">🔇</span>
-                  <span>Música OFF</span>
+                  <span className="mr-1.5">🔇</span>
+                  <span>Música</span>
                 </div>
               )}
             </div>
@@ -1429,7 +1462,7 @@ export default function Home() {
                       y: { duration: 0.3 },
                     }
               }
-              className="mt-6 relative"
+              className="mt-6 relative overflow-hidden"
             >
               {/* Dim overlay for claim anticipation (optional) */}
               <AnimatePresence>
@@ -1527,7 +1560,7 @@ export default function Home() {
                               {disabledToast.message}
                             </div>
                           </motion.div>
-                        )}
+                  )}
                       </AnimatePresence>
                 </div>
                   );
@@ -1602,35 +1635,8 @@ export default function Home() {
                             );
                           }
 
-                          // For BUBBLES and CIRCLE, show overlay around the pile
-                          return (
-                            <div className="absolute -inset-8 z-10 pointer-events-none">
-                              <div className="absolute inset-0 pointer-events-auto">
-                                {claim.gestureType === "BUBBLES" ? (
-                                  <BubblesGesture
-                                    claimId={claim.id}
-                                    closesAt={closesAt}
-                                    bubbleCount={BUBBLES_COUNT}
-                                    minDistancePx={BUBBLES_MIN_DISTANCE_PX}
-                                    bubbleSizePx={BUBBLES_SIZE_PX}
-                                    onComplete={handleGestureComplete}
-                                  />
-                                ) : claim.gestureType === "CIRCLE" ? (
-                                  <CircleGesture
-                                    claimId={claim.id}
-                                    closesAt={closesAt}
-                                    onComplete={handleGestureComplete}
-                                    minPathLen={CIRCLE_MIN_PATH_LEN}
-                                    closeDist={CIRCLE_CLOSE_DIST}
-                                    minRadius={CIRCLE_MIN_RADIUS}
-                                    maxRadiusVar={CIRCLE_MAX_RADIUS_VAR}
-                                    targetCenterTol={CIRCLE_TARGET_CENTER_TOL}
-                                    minPoints={CIRCLE_MIN_POINTS}
-                                  />
-                                ) : null}
-                              </div>
-                            </div>
-                          );
+                          // For BUBBLES and CIRCLE, show overlay (handled by GestureOverlay outside ClickablePileArea)
+                          return null;
                         })()}
 
                     </ClickablePileArea>
@@ -1638,6 +1644,50 @@ export default function Home() {
                   </PileCenter>
                           </div>
 
+                {/* Gesture Overlay for BUBBLES and CIRCLE */}
+                {roomState.game.claim &&
+                  isAttemptingClaim &&
+                  roomState.game.claim.gestureType &&
+                  (roomState.game.claim.gestureType === "BUBBLES" ||
+                    roomState.game.claim.gestureType === "CIRCLE") &&
+                  (() => {
+                    const claim = roomState.game.claim!;
+                    const closesAt = claim.closesAt;
+                    const myStatus =
+                      socketId && roomState.game.playerStatuses
+                        ? roomState.game.playerStatuses[socketId] || "ACTIVE"
+                        : "ACTIVE";
+                    const canParticipate = myStatus !== "OUT";
+
+                    if (!canParticipate) return null;
+
+                    return (
+                      <GestureOverlay>
+                        {claim.gestureType === "BUBBLES" ? (
+                          <BubblesGesture
+                            claimId={claim.id}
+                            closesAt={closesAt}
+                            bubbleCount={BUBBLES_COUNT}
+                            minDistancePx={BUBBLES_MIN_DISTANCE_PX}
+                            bubbleSizePx={BUBBLES_SIZE_PX}
+                            onComplete={handleGestureComplete}
+                          />
+                        ) : claim.gestureType === "CIRCLE" ? (
+                          <CircleGesture
+                            claimId={claim.id}
+                            closesAt={closesAt}
+                            onComplete={handleGestureComplete}
+                            minPathLen={CIRCLE_MIN_PATH_LEN}
+                            closeDist={CIRCLE_CLOSE_DIST}
+                            minRadius={CIRCLE_MIN_RADIUS}
+                            maxRadiusVar={CIRCLE_MAX_RADIUS_VAR}
+                            targetCenterTol={CIRCLE_TARGET_CENTER_TOL}
+                            minPoints={CIRCLE_MIN_POINTS}
+                          />
+                        ) : null}
+                      </GestureOverlay>
+                    );
+                  })()}
 
                 {/* Player Status Indicator */}
                 {socketId && roomState.game.playerStatuses && (
@@ -1788,56 +1838,203 @@ export default function Home() {
               className="mt-6"
             >
               <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
-                <p className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                  {t.game.phase.ended}
-                </p>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  {t.game.gameEnded}
-                </p>
-                
-                {/* Winner/Loser Message */}
-                {socketId && roomState.game && (() => {
+                {(() => {
+                  // Always show at least the basic message
+                  if (!socketId || !roomState.game) {
+                    return (
+                      <>
+                        <p className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                          {t.game.phase.ended}
+                        </p>
+                        <p className="text-gray-600 dark:text-gray-400 mb-4">
+                          {t.game.gameEnded}
+                        </p>
+                      </>
+                    );
+                  }
+
                   const myHandCount = roomState.game.handCounts[socketId] ?? 0;
                   const myStatus = roomState.game.playerStatuses?.[socketId] || "ACTIVE";
                   
                   // Player won if they have 0 cards
                   const isWinner = myHandCount === 0;
                   // Player lost if they are OUT and have cards (last one to exit)
-                  const isLoser = myStatus === "OUT" && myHandCount > 0;
+                  // Also consider losing if they have cards and are not the winner
+                  const isLoser = (myStatus === "OUT" && myHandCount > 0) || (!isWinner && myHandCount > 0);
                   
+                  // Select random message once when result is determined
+                  // Reset refs when phase changes back to IN_GAME or LOBBY
+                  if (roomState.phase !== "ENDED") {
+                    selectedWinMessageRef.current = null;
+                    selectedLoseMessageRef.current = null;
+                  }
+                  
+                  if (isWinner && !selectedWinMessageRef.current && t.game.winMessages?.length) {
+                    selectedWinMessageRef.current = t.game.winMessages[Math.floor(Math.random() * t.game.winMessages.length)];
+                  }
+                  if (isLoser && !selectedLoseMessageRef.current && t.game.loseMessages?.length) {
+                    selectedLoseMessageRef.current = t.game.loseMessages[Math.floor(Math.random() * t.game.loseMessages.length)];
+                  }
+                  
+                  const selectedWinMessage = selectedWinMessageRef.current;
+                  const selectedLoseMessage = selectedLoseMessageRef.current;
+
                   if (isWinner) {
                     return (
-                      <motion.div
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 0.2, duration: 0.3 }}
-                        className="mt-4"
-                      >
-                        <div className="bg-green-500 text-white rounded-xl shadow-xl border-4 border-green-600 px-6 py-4 inline-block">
-                          <p className="text-xl font-bold mb-1">🎉</p>
-                          <p className="text-lg font-semibold">{t.deck.youWon}</p>
-                        </div>
-                      </motion.div>
+                      <>
+                        <motion.p
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.4, ease: "easeOut" }}
+                          className="text-xl font-semibold text-gray-900 dark:text-white mb-2"
+                        >
+                          {t.game.thanksForPlaying}
+                        </motion.p>
+                        <motion.p
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.2, duration: 0.4 }}
+                          className="text-gray-600 dark:text-gray-400 mb-4"
+                        >
+                          {t.game.gameEnded}
+                        </motion.p>
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ 
+                            opacity: 1, 
+                            scale: [0.9, 1.05, 1],
+                          }}
+                          transition={{ 
+                            duration: 0.6,
+                            ease: "easeOut",
+                            times: [0, 0.6, 1],
+                          }}
+                          className="mt-4"
+                        >
+                          <motion.div 
+                            className="text-white rounded-xl shadow-xl border-4 px-6 py-4 inline-block relative"
+                            style={{
+                              backgroundColor: '#22c55e', // green-500
+                              borderColor: '#16a34a', // green-600
+                            }}
+                            animate={{
+                              boxShadow: [
+                                '0 0 28px 10px rgba(204, 255, 153, 0.8), 0 0 48px 16px rgba(204, 255, 153, 0.5), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                                '0 0 36px 13px rgba(204, 255, 153, 1), 0 0 56px 20px rgba(204, 255, 153, 0.7), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                                '0 0 28px 10px rgba(204, 255, 153, 0.8), 0 0 48px 16px rgba(204, 255, 153, 0.5), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                                '0 0 36px 13px rgba(204, 255, 153, 1), 0 0 56px 20px rgba(204, 255, 153, 0.7), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                                '0 0 28px 10px rgba(204, 255, 153, 0.8), 0 0 48px 16px rgba(204, 255, 153, 0.5), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                              ],
+                            }}
+                            transition={{
+                              duration: 2,
+                              repeat: 2,
+                              ease: "easeInOut",
+                              delay: 0.6,
+                            }}
+                          >
+                            <p className="text-xl font-bold mb-1">🎉</p>
+                            <p className="text-lg font-semibold">{t.deck.youWon}</p>
+                            {selectedWinMessage && (
+                              <motion.p
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.8, duration: 0.4, ease: "easeOut" }}
+                                className="mt-2 text-sm text-white/90 italic"
+                              >
+                                {selectedWinMessage}
+                              </motion.p>
+                            )}
+                          </motion.div>
+                        </motion.div>
+                      </>
                     );
                   }
                   
                   if (isLoser) {
                     return (
-                      <motion.div
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 0.2, duration: 0.3 }}
-                        className="mt-4"
-                      >
-                        <div className="bg-red-500 text-white rounded-xl shadow-xl border-4 border-red-600 px-6 py-4 inline-block">
-                          <p className="text-xl font-bold mb-1">😢</p>
-                          <p className="text-lg font-semibold">{t.deck.youLost}</p>
-                        </div>
-                      </motion.div>
+                      <>
+                        <motion.p
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.4, ease: "easeOut" }}
+                          className="text-xl font-semibold text-gray-900 dark:text-white mb-2"
+                        >
+                          {t.game.thanksForPlaying}
+                        </motion.p>
+                        <motion.p
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.2, duration: 0.4 }}
+                          className="text-gray-600 dark:text-gray-400 mb-4"
+                        >
+                          {t.game.gameEnded}
+                        </motion.p>
+                        <motion.div
+                          initial={{ opacity: 0, scale: 1, x: 0 }}
+                          animate={{ 
+                            opacity: 1, 
+                            scale: [1, 0.95, 1],
+                            x: [0, -6, 6, -4, 4, 0],
+                          }}
+                          transition={{ 
+                            opacity: { duration: 0.3 },
+                            scale: { duration: 0.3, ease: "easeOut" },
+                            x: { 
+                              duration: 0.3,
+                              ease: "easeInOut",
+                            },
+                          }}
+                          className="mt-4"
+                        >
+                          <motion.div 
+                            className="text-white rounded-xl shadow-xl border-4 px-6 py-4 inline-block relative"
+                            style={{
+                              backgroundColor: '#ef4444', // red-500
+                              borderColor: '#dc2626', // red-600
+                              boxShadow: '0 0 28px 10px rgba(239, 68, 68, 0.6), 0 0 48px 16px rgba(239, 68, 68, 0.4), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                            }}
+                            initial={{ 
+                              boxShadow: '0 0 0px 0px rgba(239, 68, 68, 0), 0 0 0px 0px rgba(239, 68, 68, 0), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                            }}
+                            animate={{
+                              boxShadow: '0 0 28px 10px rgba(239, 68, 68, 0.6), 0 0 48px 16px rgba(239, 68, 68, 0.4), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                            }}
+                            transition={{
+                              delay: 0.2,
+                              duration: 0.4,
+                              ease: "easeOut",
+                            }}
+                          >
+                            <p className="text-xl font-bold mb-1">😢</p>
+                            <p className="text-lg font-semibold">{t.deck.youLost}</p>
+                            {selectedLoseMessage && (
+                              <motion.p
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.5, duration: 0.4, ease: "easeOut" }}
+                                className="mt-2 text-sm text-white/90 italic"
+                              >
+                                {selectedLoseMessage}
+                              </motion.p>
+                            )}
+                          </motion.div>
+                        </motion.div>
+                      </>
                     );
                   }
                   
-                  return null;
+                  // Fallback if neither winner nor loser (shouldn't happen, but just in case)
+                  return (
+                    <>
+                      <p className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                        {t.game.phase.ended}
+                      </p>
+                      <p className="text-gray-600 dark:text-gray-400 mb-4">
+                        {t.game.gameEnded}
+                      </p>
+                    </>
+                  );
                 })()}
               </div>
             </motion.div>

@@ -80,9 +80,6 @@ export function ClickFrenzyGesture({
         const baseRate = 0.95 + step * 0.60; // 0.95..1.55 (doubled: was 0.30, now 0.60)
         const rate = Math.max(0.72, Math.min(1.55, baseRate));
         
-        // Debug log
-        console.log(`[ClickFrenzy] Click ${newCount}/${requiredClicks}: step=${step.toFixed(2)}, rate=${rate.toFixed(3)}`);
-        
         // Only play if this click counts (valid interval passed)
         playSfx('special_click', { rate, volume: 0.55 });
         lastSfxAtRef.current = now;
@@ -108,20 +105,35 @@ export function ClickFrenzyGesture({
   return (
     <div className="w-full h-full flex flex-col">
       {/* Compact header for inline mode */}
-      <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between bg-white/90 dark:bg-gray-800/90 rounded-lg px-3 py-2 shadow-lg">
+      <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between bg-white/95 dark:bg-gray-900/95 rounded-lg px-3 py-2 shadow-lg border-2 border-gray-300 dark:border-gray-600">
         <div className="text-center flex-1">
-          <div className="text-lg font-bold text-red-600 dark:text-red-400">
+          <div 
+            className="text-lg font-bold text-red-800 dark:text-red-200"
+            style={{
+              textShadow: '1px 1px 2px rgba(0,0,0,0.3)',
+            }}
+          >
             {timeLeftSeconds}s
           </div>
         </div>
         <div className="flex-1 text-center">
-          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+          <span 
+            className="text-sm font-semibold text-gray-900 dark:text-gray-100"
+            style={{
+              textShadow: '1px 1px 2px rgba(0,0,0,0.3)',
+            }}
+          >
             {clicksCount} / {requiredClicks}
           </span>
         </div>
         {isComplete && (
           <div className="flex-1 text-center">
-            <span className="text-xs font-bold text-green-600 dark:text-green-400">
+            <span 
+              className="text-xs font-bold text-green-800 dark:text-green-200"
+              style={{
+                textShadow: '1px 1px 2px rgba(0,0,0,0.3)',
+              }}
+            >
               ✓ Completado!
             </span>
           </div>
@@ -158,24 +170,48 @@ export function ClickFrenzyGesture({
         {isComplete ? (
           <div className="text-center">
             <div className="text-4xl mb-2">🎯</div>
-            <div className="text-lg font-bold text-green-700 dark:text-green-300">
+            <div 
+              className="text-lg font-bold text-green-900 dark:text-green-100"
+              style={{
+                textShadow: '2px 2px 4px rgba(0,0,0,0.8), 0 0 8px rgba(255,255,255,0.5)',
+                WebkitTextStroke: '0.5px rgba(255,255,255,0.9)',
+              }}
+            >
               {t.gestures.clickFrenzy.completed}
             </div>
           </div>
         ) : isExpired ? (
           <div className="text-center">
             <div className="text-4xl mb-2">⏱️</div>
-            <div className="text-lg font-bold text-gray-600 dark:text-gray-400">
+            <div 
+              className="text-lg font-bold text-gray-900 dark:text-gray-100"
+              style={{
+                textShadow: '2px 2px 4px rgba(0,0,0,0.8), 0 0 8px rgba(255,255,255,0.5)',
+                WebkitTextStroke: '0.5px rgba(255,255,255,0.9)',
+              }}
+            >
               {t.gestures.clickFrenzy.timeUp}
             </div>
           </div>
         ) : (
           <div className="text-center">
             <div className="text-5xl mb-2">👆</div>
-            <div className="text-lg font-bold text-red-700 dark:text-red-300">
+            <div 
+              className="text-lg font-bold text-red-900 dark:text-red-100"
+              style={{
+                textShadow: '2px 2px 4px rgba(0,0,0,0.8), 0 0 8px rgba(255,255,255,0.5)',
+                WebkitTextStroke: '0.5px rgba(255,255,255,0.9)',
+              }}
+            >
               {t.gestures.clickFrenzy.clickHere}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <div 
+              className="text-sm text-gray-900 dark:text-gray-100 mt-1 font-semibold"
+              style={{
+                textShadow: '1px 1px 3px rgba(0,0,0,0.8), 0 0 6px rgba(255,255,255,0.5)',
+                WebkitTextStroke: '0.5px rgba(255,255,255,0.9)',
+              }}
+            >
               {requiredClicks - clicksCount} {t.gestures.clickFrenzy.clicksRemaining}
             </div>
           </div>

@@ -302,7 +302,7 @@ export class RoomManager {
     if (room.phase === "LOBBY") {
       room.players.forEach((p) => {
         if (!p.isBot) {
-          p.ready = false;
+        p.ready = false;
         }
       });
     }
@@ -371,18 +371,20 @@ export class RoomManager {
 
   /**
    * Gets the public game state for a room
+   * Also returns state when phase is ENDED to show final results
    */
   getGameState(room: RoomWithGame): GameState | undefined {
-    if (!room.internalGame || room.phase !== "IN_GAME") {
+    if (!room.internalGame) {
+      return undefined;
+    }
+    
+    // For ENDED phase, we still need game state to show win/lose messages
+    if (room.phase !== "IN_GAME" && room.phase !== "ENDED") {
       return undefined;
     }
 
     const { internalGame } = room;
-    const turnPlayer = room.players[internalGame.turnIndex];
-    if (!turnPlayer) {
-      return undefined;
-    }
-
+    
     // Calculate hand counts
     const handCounts: Record<string, number> = {};
     room.players.forEach((player) => {
@@ -394,6 +396,30 @@ export class RoomManager {
     room.players.forEach((player) => {
       playerStatuses[player.id] = internalGame.statuses[player.id] || "ACTIVE";
     });
+
+    // For ENDED phase, we only need handCounts and playerStatuses to show win/lose
+    if (room.phase === "ENDED") {
+      const turnPlayer = room.players[internalGame.turnIndex];
+      return {
+        turnPlayerId: turnPlayer?.id || room.players[0]?.id || "",
+        turnIndex: internalGame.turnIndex,
+        wordIndex: internalGame.wordIndex,
+        currentWord: KINDS[internalGame.wordIndex] || KINDS[0],
+        spokenWord: null,
+        pileCount: 0,
+        topCard: undefined,
+        handCounts,
+        playerStatuses,
+        claim: undefined,
+        lastFlipPlayerId: undefined,
+      };
+    }
+
+    // For IN_GAME phase, return full state
+    const turnPlayer = room.players[internalGame.turnIndex];
+    if (!turnPlayer) {
+      return undefined;
+    }
 
     // Get top card from pile
     const topCard =

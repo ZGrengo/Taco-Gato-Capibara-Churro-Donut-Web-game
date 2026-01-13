@@ -337,14 +337,18 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
       return "rest";
     };
 
-    // Detect win (count becomes 0)
+    // Detect win (count becomes 0 AND player is actually OUT, not waiting for final claim)
     useEffect(() => {
       if (count === 0 && prevCountRef.current > 0) {
-        // Player won! Play victory sound
-        playSfx('game_win');
+        // Only play victory sound if player actually won (not waiting for final claim)
+        // If playerStatus is PENDING_EXIT, they still need to complete the final claim
+        if (playerStatus !== "PENDING_EXIT") {
+          // Player won! Play victory sound
+          playSfx('game_win');
+        }
       }
       prevCountRef.current = count;
-    }, [count, playSfx]);
+    }, [count, playerStatus, playSfx]);
     
     if (count === 0) {
       // If player is waiting for final claim, show "One last claim!" instead of "You won!"

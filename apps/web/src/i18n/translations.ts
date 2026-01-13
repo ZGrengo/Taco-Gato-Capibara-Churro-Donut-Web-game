@@ -18,6 +18,11 @@ export interface Translations {
     musicOff: string;
     activateMusic: string;
     deactivateMusic: string;
+    sound: string;
+    soundOn: string;
+    soundOff: string;
+    activateSound: string;
+    deactivateSound: string;
     multiplayerGame: string;
     realtimeMultiplayerExperience: string;
     changeToEnglish: string;
@@ -52,6 +57,9 @@ export interface Translations {
     startGame: string;
     gameHasAlreadyStarted: string;
     gameEnded: string;
+    thanksForPlaying: string;
+    winMessages: string[];
+    loseMessages: string[];
     needAtLeast2Players: string;
     playersNotReady: string;
     playerNotReady: string;
@@ -89,11 +97,13 @@ export interface Translations {
   players: {
     players: string;
     host: string;
+    bot: string;
     turn: string;
     currentTurn: string;
     ready: string;
     notReady: string;
     waitingForFinalClaim: string;
+    spectator: string;
   };
 
   // Deck
@@ -136,6 +146,8 @@ export interface Translations {
       completed: string;
       timeUp: string;
       drawCircle: string;
+      drawCircleAroundCard: string;
+      tryAgain: string;
     };
   };
 }
@@ -183,6 +195,17 @@ const translations: Record<Language, Translations> = {
       startGame: 'Iniciar Partida',
       gameHasAlreadyStarted: 'La partida ya ha comenzado',
       gameEnded: 'La partida ha terminado.',
+      thanksForPlaying: '¡Gracias por Jugar!',
+      winMessages: [
+        '¡Amante de los tacos! 🌮',
+        'Pensaste rápido y ganaste.',
+        'El capibara estuvo de tu lado.',
+      ],
+      loseMessages: [
+        'El capibara te traicionó…',
+        'Ese último claim dolió.',
+        'Demasiados donuts para una sola mano.',
+      ],
       needAtLeast2Players: 'Se necesitan al menos 2 jugadores para empezar',
       playersNotReady: 'jugadores no están listos',
       playerNotReady: 'jugador no está listo',
@@ -275,6 +298,11 @@ const translations: Record<Language, Translations> = {
       musicOff: 'Music OFF',
       activateMusic: 'Activate music',
       deactivateMusic: 'Deactivate music',
+      sound: 'Sound',
+      soundOn: 'Sound ON',
+      soundOff: 'Sound OFF',
+      activateSound: 'Activate sound',
+      deactivateSound: 'Deactivate sound',
       multiplayerGame: '🎮 Multiplayer Game',
       realtimeMultiplayerExperience: 'Real-time multiplayer experience',
       changeToEnglish: 'Change to English',
@@ -303,6 +331,17 @@ const translations: Record<Language, Translations> = {
       startGame: 'Start Game',
       gameHasAlreadyStarted: 'Game has already started',
       gameEnded: 'The game has ended.',
+      thanksForPlaying: 'Thanks for Playing!',
+      winMessages: [
+        'Taco lover! 🌮',
+        'You thought fast and won.',
+        'The capybara was on your side.',
+      ],
+      loseMessages: [
+        'The capybara betrayed you…',
+        'That last claim hurt.',
+        'Too many donuts for one hand.',
+      ],
       needAtLeast2Players: 'Need at least 2 players to start',
       playersNotReady: 'player(s) not ready',
       playerNotReady: 'player not ready',
