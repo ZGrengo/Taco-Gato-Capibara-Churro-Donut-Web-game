@@ -346,7 +346,7 @@ export class RoomManager {
       hands[player.id] = [];
     });
 
-    // Round-robin distribution
+    // Round-robin distribution - distribute all cards evenly
     let playerIndex = 0;
     for (const card of deck) {
       const playerId = room.players[playerIndex].id;
@@ -367,6 +367,46 @@ export class RoomManager {
       wordIndex: 0, // Start at "taco" (index 0)
       statuses,
     };
+  }
+
+  /**
+   * Starts a rematch (restarts game with same players)
+   * Only host can call this, and only when phase is ENDED
+   */
+  rematch(playerId: string): Room | null {
+    const room = this.getPlayerRoom(playerId);
+    if (!room) {
+      return null;
+    }
+
+    // Validations
+    if (room.hostId !== playerId) {
+      return null; // Only host can rematch
+    }
+
+    if (room.phase !== "ENDED") {
+      return null; // Can only rematch when game has ended
+    }
+
+    if (room.players.length < 2) {
+      return null; // Need at least 2 players
+    }
+
+    // Clear internal game state completely
+    room.internalGame = undefined;
+
+    // Reset ready status of all players
+    room.players.forEach((player) => {
+      player.ready = false;
+    });
+
+    // Initialize new game
+    this.initGame(room);
+
+    // Change phase to IN_GAME
+    room.phase = "IN_GAME";
+
+    return room;
   }
 
   /**

@@ -9,6 +9,7 @@ import {
   RoomJoinSchema,
   ReadyToggleSchema,
   StartGameSchema,
+  RematchRequestSchema,
   FlipRequestSchema,
   ClaimAttemptSchema,
 } from "@acme/shared";
@@ -221,6 +222,44 @@ io.on("connection", (socket) => {
 
     emitRoomState(room.code);
     console.log(`Game started in room ${room.code} by ${socket.id}`);
+  });
+
+  // Handle rematch request
+  socket.on(EVENTS.REMATCH_REQUEST, (payload) => {
+    // Validate payload (empty object)
+    const result = RematchRequestSchema.safeParse(payload);
+    if (!result.success) {
+      socket.emit(EVENTS.ERROR, {
+        message: "Invalid payload: " + result.error.message,
+      } satisfies { message: string });
+      return;
+    }
+
+    const room = roomManager.rematch(socket.id);
+    if (!room) {
+      const playerRoom = roomManager.getPlayerRoom(socket.id);
+      if (!playerRoom) {
+        socket.emit(EVENTS.ERROR, {
+          message: "You are not in a room",
+        } satisfies { message: string });
+      } else if (playerRoom.hostId !== socket.id) {
+        socket.emit(EVENTS.ERROR, {
+          message: "Only the host can start a rematch",
+        } satisfies { message: string });
+      } else if (playerRoom.phase !== "ENDED") {
+        socket.emit(EVENTS.ERROR, {
+          message: "Can only rematch when the game has ended",
+        } satisfies { message: string });
+      } else if (playerRoom.players.length < 2) {
+        socket.emit(EVENTS.ERROR, {
+          message: "Need at least 2 players to rematch",
+        } satisfies { message: string });
+      }
+      return;
+    }
+
+    emitRoomState(room.code);
+    console.log(`Rematch started in room ${room.code} by ${socket.id}`);
   });
 
   // Handle flip request

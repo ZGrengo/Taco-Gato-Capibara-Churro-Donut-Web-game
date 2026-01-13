@@ -464,6 +464,9 @@ export default function Home() {
   // Track selected win/lose messages to ensure they don't change on re-renders
   const selectedWinMessageRef = useRef<string | null>(null);
   const selectedLoseMessageRef = useRef<string | null>(null);
+  
+  // Track rematch state
+  const [isRematching, setIsRematching] = useState(false);
 
   // Track last local flip's flying card ID to know when to play card_throw sound
   const lastLocalFlipCardIdRef = useRef<string | null>(null);
@@ -890,6 +893,13 @@ export default function Home() {
 
   // Check if current player is host
   const isHost = roomState && socketId && roomState.hostId === socketId;
+  
+  // Reset rematch state when phase changes
+  useEffect(() => {
+    if (roomState?.phase !== "ENDED") {
+      setIsRematching(false);
+    }
+  }, [roomState?.phase]);
 
   // Get current player
   const currentPlayer =
@@ -1838,6 +1848,28 @@ export default function Home() {
               className="mt-6"
             >
               <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
+                {/* Rematch button - only visible to host */}
+                {isHost && roomState.players.length >= 2 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3, duration: 0.4 }}
+                    className="mb-6"
+                  >
+                    <button
+                      onClick={() => {
+                        if (socket && !isRematching) {
+                          setIsRematching(true);
+                          socket.emit(EVENTS.REMATCH_REQUEST, {});
+                        }
+                      }}
+                      disabled={isRematching || roomState.players.length < 2}
+                      className="px-6 py-3 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-lg shadow-lg transition-colors duration-200"
+                    >
+                      {isRematching ? t.game.rematching : t.game.playAgain}
+                    </button>
+                  </motion.div>
+                )}
                 {(() => {
                   // Always show at least the basic message
                   if (!socketId || !roomState.game) {

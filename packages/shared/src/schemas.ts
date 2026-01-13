@@ -30,6 +30,9 @@ export const ReadyToggleSchema = z.object({});
 // Start game payload (client -> server) - no payload needed
 export const StartGameSchema = z.object({});
 
+// Rematch request payload (client -> server) - no payload needed
+export const RematchRequestSchema = z.object({});
+
 // Flip request payload (client -> server) - no payload needed
 export const FlipRequestSchema = z.object({});
 

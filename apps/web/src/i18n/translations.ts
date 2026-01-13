@@ -60,6 +60,8 @@ export interface Translations {
     thanksForPlaying: string;
     winMessages: string[];
     loseMessages: string[];
+    playAgain: string;
+    rematching: string;
     needAtLeast2Players: string;
     playersNotReady: string;
     playerNotReady: string;
@@ -196,6 +198,8 @@ const translations: Record<Language, Translations> = {
       gameHasAlreadyStarted: 'La partida ya ha comenzado',
       gameEnded: 'La partida ha terminado.',
       thanksForPlaying: '¡Gracias por Jugar!',
+      playAgain: 'Jugar otra vez',
+      rematching: 'Iniciando...',
       winMessages: [
         '¡Amante de los tacos! 🌮',
         'Pensaste rápido y ganaste.',
@@ -332,6 +336,8 @@ const translations: Record<Language, Translations> = {
       gameHasAlreadyStarted: 'Game has already started',
       gameEnded: 'The game has ended.',
       thanksForPlaying: 'Thanks for Playing!',
+      playAgain: 'Play Again',
+      rematching: 'Starting...',
       winMessages: [
         'Taco lover! 🌮',
         'You thought fast and won.',
