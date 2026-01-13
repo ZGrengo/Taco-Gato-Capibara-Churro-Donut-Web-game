@@ -47,6 +47,12 @@ pnpm dev
 # Build de todos los paquetes
 pnpm build
 
+# Build específicos (para producción)
+pnpm build:shared        # Compila solo el paquete shared
+pnpm build:server        # Compila solo el servidor
+pnpm build:server:prod   # Compila shared primero, luego server (recomendado para producción)
+pnpm start:server       # Inicia el servidor compilado
+
 # Linting
 pnpm lint
 
@@ -90,16 +96,41 @@ Aplicación Next.js con:
 
 ### Variables de Entorno
 
-**apps/web/.env.local**:
+#### Servidor (apps/server/.env)
+
+Crea un archivo `.env` en `apps/server/` con:
+
 ```env
+# Port where the server will listen
+PORT=3001
+
+# Web origin URL for CORS configuration
+# For local development: http://localhost:3000
+# For production: your production frontend URL
+WEB_ORIGIN=http://localhost:3000
+```
+
+#### Cliente Web (apps/web/.env.local)
+
+Crea un archivo `.env.local` en `apps/web/` con:
+
+```env
+# Socket.IO server URL
+# For local development: http://localhost:3001
+# For production: your production server URL
 NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
 ```
 
-**apps/server** (opcional):
-```env
-PORT=3001
-CORS_ORIGIN=http://localhost:3000
-```
+#### Producción
+
+En producción (Render/Vercel), configura estas variables de entorno:
+
+**Servidor:**
+- `PORT`: Automáticamente asignado por la plataforma
+- `WEB_ORIGIN`: URL de tu frontend en producción (ej: `https://tu-app.vercel.app`)
+
+**Cliente:**
+- `NEXT_PUBLIC_SOCKET_URL`: URL de tu servidor en producción (ej: `https://tu-servidor.onrender.com`)
 
 ## 📝 Notas
 

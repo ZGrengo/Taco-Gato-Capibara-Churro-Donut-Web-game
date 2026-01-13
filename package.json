@@ -5,6 +5,10 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "build:shared": "pnpm -C packages/shared build",
+    "build:server": "pnpm -C apps/server build",
+    "build:server:prod": "pnpm build:shared && pnpm build:server",
+    "start:server": "pnpm -C apps/server start",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules"

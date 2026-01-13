@@ -17,7 +17,7 @@ import { RoomManager } from "./room-manager";
 import { botManager } from "./bot-manager";
 
 const PORT = process.env.PORT || 3001;
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
+const CORS_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
 
 const app = express();
 const httpServer = createServer(app);
@@ -355,8 +355,8 @@ io.on("connection", (socket) => {
   });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+httpServer.listen(Number(PORT), "0.0.0.0", () => {
+  console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Socket.IO server ready`);
   console.log(`🌐 CORS enabled for ${CORS_ORIGIN}`);
 });
