@@ -8,6 +8,7 @@
     "build:shared": "pnpm -C packages/shared build",
     "build:server": "pnpm -C apps/server build",
     "build:server:prod": "pnpm build:shared && pnpm build:server",
+    "build:render": "pnpm install --frozen-lockfile --include=dev && pnpm build:shared && pnpm build:server",
     "start:server": "pnpm -C apps/server start",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
@@ -23,9 +24,8 @@
     "typescript": "^5.3.3"
   },
   "engines": {
-    "node": ">=18.0.0",
+    "node": "20.x",
     "pnpm": ">=8.0.0"
   },
   "packageManager": "pnpm@8.15.0"
 }
-
