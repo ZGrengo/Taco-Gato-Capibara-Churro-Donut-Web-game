@@ -24,7 +24,7 @@ export type MusicName =
   | 'menu'           // Menu music
   | 'thinkfast';     // In-game music (thinkfast.mp3)
 
-interface SfxOptions {
+export interface SfxOptions {
   pitch?: number;      // Pitch variation (0.5 - 2.0, default 1.0) - also accepts "rate" for backwards compatibility
   rate?: number;       // Alternative to pitch (same as pitch, playbackRate value) - takes precedence over pitch
   volume?: number;     // Volume override (0.0 - 1.0, overrides global sfx volume)
