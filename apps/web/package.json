@@ -2,9 +2,12 @@
   "name": "@acme/web",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "pnpm -C ../../packages/shared build && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
