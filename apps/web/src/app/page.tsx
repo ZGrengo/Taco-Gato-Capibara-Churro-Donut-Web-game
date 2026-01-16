@@ -602,7 +602,7 @@ export default function Home() {
       // Clear the reference after playing
       lastLocalFlipCardIdRef.current = null;
     }
-  }, [triggerImpact, playSfx, throwRate]);
+  }, [triggerImpact, playSfx, throwRate, roomState?.game?.pileCount]);
 
   // Handle flying card completion
   const handleFlyingCardComplete = useCallback((id: string) => {
@@ -1675,12 +1675,12 @@ export default function Home() {
                   }
                   
                   // Check if there are other active players (players with cards who are not OUT)
-                  const hasOtherActivePlayers = roomState.players.some((player) => {
+                  const hasOtherActivePlayers = roomState.game ? roomState.players.some((player) => {
                     if (player.id === socketId) return false; // Exclude self
-                    const playerHandCount = roomState.game.handCounts[player.id] ?? 0;
-                    const playerStatus = roomState.game.playerStatuses?.[player.id] || "ACTIVE";
+                    const playerHandCount = roomState.game?.handCounts[player.id] ?? 0;
+                    const playerStatus = roomState.game?.playerStatuses?.[player.id] || "ACTIVE";
                     return playerHandCount > 0 && playerStatus !== "OUT";
-                  });
+                  }) : false;
                   
                   return (
                     <div className="mb-6 flex flex-col items-center gap-2 relative overflow-visible">
@@ -1734,8 +1734,8 @@ export default function Home() {
                 <div className="mb-6 flex flex-col items-center">
                   <PileCenter
                     ref={pileRef}
-                    pileCount={roomState.game.pileCount}
-                    topCard={roomState.game.topCard}
+                    pileCount={roomState.game?.pileCount ?? 0}
+                    topCard={roomState.game?.topCard}
                     backSrc="/assets/card-back.webp"
                     impactKey={impactKey}
                     shakeKey={shakeKey}
