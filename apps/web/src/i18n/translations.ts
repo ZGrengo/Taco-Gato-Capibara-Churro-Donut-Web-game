@@ -13,6 +13,8 @@ export interface Translations {
   common: {
     connected: string;
     disconnected: string;
+    preparingServer: string;
+    serverColdStartNote: string;
     music: string;
     musicOn: string;
     musicOff: string;
@@ -160,6 +162,8 @@ const translations: Record<Language, Translations> = {
     common: {
       connected: 'Conectado',
       disconnected: 'Desconectado',
+      preparingServer: 'Preparando servidor...',
+      serverColdStartNote: 'Nota: El servidor gratuito puede tardar 30-50s en iniciar si está inactivo.',
       music: 'Música',
       musicOn: 'Música ON',
       musicOff: 'Música OFF',
@@ -299,6 +303,8 @@ const translations: Record<Language, Translations> = {
     common: {
       connected: 'Connected',
       disconnected: 'Disconnected',
+      preparingServer: 'Preparing server...',
+      serverColdStartNote: 'Note: Free server may take 30-50s to start if idle.',
       music: 'Music',
       musicOn: 'Music ON',
       musicOff: 'Music OFF',

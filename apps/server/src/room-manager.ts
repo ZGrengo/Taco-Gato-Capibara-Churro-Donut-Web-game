@@ -9,6 +9,11 @@ import {
 import { randomUUID } from "crypto";
 
 /**
+ * Maximum number of players allowed in a room
+ */
+const MAX_PLAYERS = 6;
+
+/**
  * Generates a random 5-character room code
  * Excludes 0, O, 1, I to avoid confusion
  */
@@ -217,6 +222,11 @@ export class RoomManager {
 
     // Don't allow joining if game has started
     if (room.phase !== "LOBBY") {
+      return null;
+    }
+
+    // Check if room is full
+    if (room.players.length >= MAX_PLAYERS) {
       return null;
     }
 

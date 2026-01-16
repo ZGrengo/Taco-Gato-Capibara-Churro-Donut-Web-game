@@ -144,6 +144,16 @@ io.on("connection", (socket) => {
     }
 
     const { code, name } = result.data;
+    const existingRoom = roomManager.getRoom(code);
+    
+    // Check if room exists and is full before attempting to join
+    if (existingRoom && existingRoom.phase === "LOBBY" && existingRoom.players.length >= 6) {
+      socket.emit(EVENTS.ERROR, {
+        message: `Room ${code} is full (maximum 6 players)`,
+      } satisfies { message: string });
+      return;
+    }
+
     const room = roomManager.joinRoom(code, name, socket.id);
 
     if (!room) {

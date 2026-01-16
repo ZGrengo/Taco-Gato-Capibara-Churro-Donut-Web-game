@@ -156,6 +156,7 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
 export default function Home() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
+  const [warmingUp, setWarmingUp] = useState(false);
   const [playerName, setPlayerName] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [joinCode, setJoinCode] = useState("");
@@ -190,39 +191,95 @@ export default function Home() {
     pileCount: number;
   }>({ pileCount: 0 });
 
+  /**
+   * Warm up the server by calling the health endpoint
+   * This silently wakes up the Render free-tier server if it's spun down
+   */
+  const warmUpServer = async (): Promise<void> => {
+    try {
+      const healthUrl = `${SOCKET_URL}/health`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      await fetch(healthUrl, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      // Silently ignore errors - we just want to wake the server
+    } catch (error) {
+      // Silently ignore errors - server might be starting up
+      console.debug('Health check failed (expected on cold start):', error);
+    }
+  };
+
   useEffect(() => {
-    const newSocket = io(SOCKET_URL, {
-      transports: ["websocket", "polling"],
-    });
+    let mounted = true;
 
-    newSocket.on("connect", () => {
-      console.log("Connected to server");
-      setConnected(true);
-      setSocketId(newSocket.id || null);
-      setError(null);
-    });
+    const initializeConnection = async () => {
+      // Step 1: Warm up server first
+      setWarmingUp(true);
+      await warmUpServer();
+      
+      if (!mounted) return;
 
-    newSocket.on("disconnect", () => {
-      console.log("Disconnected from server");
-      setConnected(false);
-      setSocketId(null);
-    });
+      // Step 2: Create socket with improved reconnection config
+      const newSocket = io(SOCKET_URL, {
+        transports: ["websocket", "polling"],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: Infinity,
+        timeout: 20000,
+      });
 
-    newSocket.on(EVENTS.ROOM_STATE, (data: RoomState) => {
-      setRoomState(data);
-      setRoomCode(data.code);
-      setError(null);
-    });
+      newSocket.on("connect", () => {
+        console.log("Connected to server");
+        setConnected(true);
+        setWarmingUp(false);
+        setSocketId(newSocket.id || null);
+        setError(null);
+      });
 
-    newSocket.on(EVENTS.ERROR, (data: ErrorPayload) => {
-      setError(data.message);
-      console.error("Error:", data.message);
-    });
+      newSocket.on("disconnect", () => {
+        console.log("Disconnected from server");
+        setConnected(false);
+        setWarmingUp(false);
+        setSocketId(null);
+      });
 
-    setSocket(newSocket);
+      newSocket.on("connect_error", (error) => {
+        console.log("Connection error:", error);
+        // Keep warmingUp true if we're still trying to connect
+        if (!newSocket.connected) {
+          setWarmingUp(true);
+        }
+      });
+
+      newSocket.on(EVENTS.ROOM_STATE, (data: RoomState) => {
+        setRoomState(data);
+        setRoomCode(data.code);
+        setError(null);
+      });
+
+      newSocket.on(EVENTS.ERROR, (data: ErrorPayload) => {
+        setError(data.message);
+        console.error("Error:", data.message);
+      });
+
+      setSocket(newSocket);
+
+      return () => {
+        mounted = false;
+        newSocket.close();
+      };
+    };
+
+    initializeConnection();
 
     return () => {
-      newSocket.close();
+      mounted = false;
     };
   }, []);
 
@@ -990,21 +1047,38 @@ export default function Home() {
 
           {/* Connection Status, Language Toggle, and Music Toggle */}
           <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div
-              className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                connected
-                  ? "dark:bg-green-900 dark:text-green-200"
-                  : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-              }`}
-              style={connected ? { backgroundColor: '#CCFF99', color: '#1a1a1a' } : {}}
-            >
-              <span
-                className={`w-2 h-2 rounded-full mr-2 ${
-                  connected ? "" : "bg-red-500"
+            <div className="flex flex-col gap-1">
+              <div
+                className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                  connected
+                    ? "dark:bg-green-900 dark:text-green-200"
+                    : warmingUp
+                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                    : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
                 }`}
-                style={connected ? { backgroundColor: '#16a34a' } : {}}
-              />
-              {connected ? t.common.connected : t.common.disconnected}
+                style={connected ? { backgroundColor: '#CCFF99', color: '#1a1a1a' } : {}}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full mr-2 ${
+                    connected 
+                      ? "" 
+                      : warmingUp 
+                      ? "bg-yellow-500 animate-pulse" 
+                      : "bg-red-500"
+                  }`}
+                  style={connected ? { backgroundColor: '#16a34a' } : {}}
+                />
+                {warmingUp 
+                  ? t.common.preparingServer 
+                  : connected 
+                  ? t.common.connected 
+                  : t.common.disconnected}
+              </div>
+              {warmingUp && (
+                <p className="text-xs text-gray-600 dark:text-gray-400 px-3">
+                  {t.common.serverColdStartNote}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
