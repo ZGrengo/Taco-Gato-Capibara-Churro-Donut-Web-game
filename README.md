@@ -10,8 +10,7 @@ Construido como **monorepo** con Next.js, Socket.IO, TypeScript y Turborepo.
 
 ## ✨ Demo
 
-- **Web (Vercel):** https://TU_APP.vercel.app
-- **Servidor (Render):** https://TU_SERVER.onrender.com
+- **Web (Vercel):** [Think-Fast!](https://thinkfast-web.vercel.app/)
 
 > ℹ️ El servidor usa el free tier de Render. Tras un tiempo de inactividad puede "dormirse" (spin-down). El primer jugador puede notar un pequeño delay al conectar.
 
