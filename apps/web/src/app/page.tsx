@@ -929,11 +929,11 @@ export default function Home() {
 
   return (
     <main className="min-h-screen p-8 dark:from-gray-900 dark:to-gray-800" style={{ background: '#93C5F9' }}>
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl mx-auto overflow-visible">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8"
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 overflow-visible md:overflow-visible"
         >
           <h1 className="text-4xl font-bold mb-2 text-gray-900 dark:text-white text-center md:text-left">
             {isMounted ? t.common.gameTitle : '¡Piensa Rápido!'}
@@ -1472,7 +1472,7 @@ export default function Home() {
                       y: { duration: 0.3 },
                     }
               }
-              className="mt-6 relative overflow-hidden"
+              className="mt-6 relative overflow-visible"
             >
               {/* Dim overlay for claim anticipation (optional) */}
               <AnimatePresence>
@@ -1541,7 +1541,7 @@ export default function Home() {
                   }
                   
                   return (
-                    <div className="mb-6 flex justify-center relative">
+                    <div className="mb-6 flex justify-center relative overflow-visible">
                       <DeckStack
                         ref={deckRef}
                         count={myHandCount}
@@ -1737,7 +1737,7 @@ export default function Home() {
                   <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">
                     Players ({roomState.players.length})
                   </h3>
-                  <div className="space-y-2">
+                  <div className="space-y-2 overflow-visible px-1">
                     {roomState.players.map((player, index) => {
                       const isPlayerHost = player.id === roomState.hostId;
                       const isCurrentTurn =

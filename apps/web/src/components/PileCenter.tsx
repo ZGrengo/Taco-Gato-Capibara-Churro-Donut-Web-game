@@ -218,7 +218,7 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
           {oopsKey > 0 && oopsCardCount > 0 && (
             <motion.div
               key={`oops-${oopsKey}`}
-              className="absolute -top-16 left-1/2 transform -translate-x-1/2 pointer-events-none z-[60]"
+              className="absolute -top-16 left-1/2 transform -translate-x-1/2 pointer-events-none z-[60] max-w-[90vw] px-2"
               initial={{
                 opacity: 0,
                 y: 8,
@@ -239,7 +239,7 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
                 ease: "easeOut",
               }}
             >
-              <div className="bg-red-500 text-white px-6 py-3 rounded-lg font-bold text-lg shadow-2xl border-4 border-red-600 dark:border-red-700 whitespace-nowrap">
+              <div className="bg-red-500 text-white px-3 py-2 md:px-6 md:py-3 rounded-lg font-bold text-sm md:text-base lg:text-lg shadow-2xl border-2 md:border-4 border-red-600 dark:border-red-700 text-center">
                 <span className="drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]">
                   😵‍💫 {t.pile.oops} {t.pile.youGotCards} {oopsCardCount} {oopsCardCount === 1 ? t.pile.card : t.pile.cards}
                 </span>

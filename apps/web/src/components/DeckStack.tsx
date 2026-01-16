@@ -153,6 +153,11 @@ function DesktopHelpBubble({
           ease: "easeOut"
         }}
         className="hidden md:block absolute top-1/2 left-full ml-3 transform -translate-y-1/2 pointer-events-none z-50"
+        style={{ 
+          position: 'absolute',
+          // Ensure it can extend beyond parent container
+          willChange: 'transform',
+        }}
       >
         <div className="bg-indigo-600 dark:bg-indigo-500 text-white px-3 py-2 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap relative">
           {helpText}
