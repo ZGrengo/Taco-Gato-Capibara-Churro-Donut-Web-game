@@ -439,6 +439,7 @@ export default function Home() {
   // Success notification states (for successful claim without receiving cards)
   const [goodKey, setGoodKey] = useState(0);
   const prevClaimActiveRef = useRef<boolean>(false); // Track if claim was active to detect resolution
+  const prevClaimClaimersRef = useRef<string[]>([]); // Track previous claim claimers to detect successful claims
   
   // Toast state for disabled deck feedback
   const [disabledToast, setDisabledToast] = useState<{ message: string; key: number } | null>(null);
@@ -624,6 +625,19 @@ export default function Home() {
           cardCount = slapPileSnapshotRef.current ?? prevPileCountRef.current;
         }
       }
+
+      // Case 3: Claim expired without player attempting to claim
+      // Player received cards because they didn't claim in time (claim expired)
+      if (!shouldShowOops) {
+        const claimExpired = wasClaimActive && !claimActive; // Claim was active, now it's gone
+        const noClaimIntent = slapIntentAt === null && gestureAttemptStartedAtRef.current === null; // Player didn't attempt to claim
+        
+        // If claim expired and player received cards without attempting, show "Oops!"
+        if (claimExpired && noClaimIntent) {
+          shouldShowOops = true;
+          cardCount = prevPileCountRef.current;
+        }
+      }
     }
     
     // PRIORITY 2: Only check for success (¡Bien!) if NO penalty was detected AND handCount did NOT increase
@@ -633,18 +647,29 @@ export default function Home() {
       const handCountDidNotIncrease = myHandCount <= prevMyHandCountRef.current; // Player didn't receive cards
       const hadClaimIntent = slapIntentAt !== null || gestureAttemptStartedAtRef.current !== null; // Player was attempting claim
 
-      // Check if it's a successful claim (within reasonable time window)
-      if (claimResolved && handCountDidNotIncrease && hadClaimIntent) {
-        // Check if claim intent was recent (within 2500ms to account for claim resolution time)
-        const timeSinceSlap = slapIntentAt !== null ? Date.now() - slapIntentAt : null;
-        const timeSinceGesture = gestureAttemptStartedAtRef.current !== null ? Date.now() - gestureAttemptStartedAtRef.current : null;
+      // Check if it's a successful claim
+      if (claimResolved && handCountDidNotIncrease) {
+        // Check if player was in the claimers list (successful claim)
+        // We need to check the previous claim state since current claim is now null
+        // Store previous claimers in a ref or check if we had intent
+        const wasInClaimers = prevClaimClaimersRef.current?.includes(socketId) ?? false;
         
-        const recentIntent = 
-          (timeSinceSlap !== null && timeSinceSlap < 2500) ||
-          (timeSinceGesture !== null && timeSinceGesture < 2500);
+        // Show "¡Bien!" if:
+        // 1. Player had claim intent (normal case), OR
+        // 2. Player was in claimers list (covers cases where intent wasn't tracked but claim succeeded)
+        if (hadClaimIntent || wasInClaimers) {
+          // Check if claim intent was recent (within 5000ms to account for claim resolution time and gestures)
+          const timeSinceSlap = slapIntentAt !== null ? Date.now() - slapIntentAt : null;
+          const timeSinceGesture = gestureAttemptStartedAtRef.current !== null ? Date.now() - gestureAttemptStartedAtRef.current : null;
+          
+          const recentIntent = 
+            (timeSinceSlap !== null && timeSinceSlap < 5000) ||
+            (timeSinceGesture !== null && timeSinceGesture < 5000) ||
+            wasInClaimers; // If in claimers, always show (covers gesture completion cases)
 
-        if (recentIntent) {
-          shouldShowGood = true;
+          if (recentIntent || wasInClaimers) {
+            shouldShowGood = true;
+          }
         }
       }
     }
@@ -702,11 +727,25 @@ export default function Home() {
         gestureClaimIdRef.current = null;
         setIsAttemptingClaim(false);
       }
+      
+      // Clear claimers ref after using it
+      prevClaimClaimersRef.current = [];
     }
 
     // Update refs for next comparison
     // Always update claim active state
     prevClaimActiveRef.current = claimActive;
+    
+    // Update claimers list when claim is active (before it resolves)
+    if (claimActive && game.claim?.claimers) {
+      prevClaimClaimersRef.current = [...game.claim.claimers];
+    } else if (!claimActive && wasClaimActive) {
+      // Claim just resolved - keep claimers for this cycle (will be used in detection above)
+      // Will be cleared after detection or on next cycle if no detection
+    } else if (!claimActive && !wasClaimActive) {
+      // No claim was active, clear claimers ref
+      prevClaimClaimersRef.current = [];
+    }
     
     // Update hand/pile counts for next comparison cycle
     prevMyHandCountRef.current = myHandCount;
