@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, ReactNode, useMemo } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import type { Card } from "@acme/shared";
 import { useTranslations } from "../hooks/useTranslations";
@@ -89,7 +90,7 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
           }}
         >
           {/* Stack of card backs behind topCard */}
-          <div className="relative" style={{ width: "224px", height: "288px", margin: "0 auto" }}>
+          <div className="relative overflow-hidden" style={{ width: "224px", height: "288px", margin: "0 auto" }}>
             {/* Anticipation glow ring - positioned over the stack */}
             <AnimatePresence>
               {anticipationKey > 0 && (
@@ -149,12 +150,16 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
                     opacity: 0.85 - layerIndex * 0.03, // Slight fade for depth
                   }}
                 >
-                  <img
-                    src={backSrc}
-                    alt="Card back"
-                    className="w-full h-full object-cover"
-                    draggable={false}
-                  />
+                  <div className="relative w-full h-full">
+                    <Image
+                      src={backSrc}
+                      alt="Card back"
+                      fill
+                      className="object-cover"
+                      draggable={false}
+                      unoptimized
+                    />
+                  </div>
                 </div>
               );
             })}

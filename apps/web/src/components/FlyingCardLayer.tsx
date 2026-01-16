@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface FlyingCard {
@@ -98,21 +99,25 @@ export function FlyingCardLayer({
                 onCardComplete(card.id);
               }}
             >
-              <div className="w-full h-full rounded-xl shadow-2xl border-4 border-gray-300 dark:border-gray-600 overflow-hidden">
+              <div className="w-full h-full rounded-xl shadow-2xl border-4 border-gray-300 dark:border-gray-600 overflow-hidden relative">
                 {card.kind === "BACK" ? (
-                  <img
+                  <Image
                     src={card.backSrc}
                     alt="Flying card back"
-                    className="w-full h-full object-cover"
+                    fill
+                    className="object-cover"
                     draggable={false}
+                    unoptimized
                   />
                 ) : (
                   card.frontSrc && (
-                    <img
+                    <Image
                       src={card.frontSrc}
                       alt="Flying card"
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
                       draggable={false}
+                      unoptimized
                     />
                   )
                 )}

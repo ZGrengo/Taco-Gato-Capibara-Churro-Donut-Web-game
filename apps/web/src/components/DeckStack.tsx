@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useState, useCallback, useRef, useEffect, useImperativeHandle } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useAudio } from "../hooks/useAudio";
 import { useTranslations } from "../hooks/useTranslations";
@@ -392,8 +393,8 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
     return (
       <motion.div
         ref={ref}
-        className="relative w-56 h-72 overflow-visible"
-        style={{ position: "relative", overflow: "visible" }}
+        className="relative w-56 h-72 overflow-hidden"
+        style={{ position: "relative" }}
       >
         <div
           ref={containerRef}
@@ -437,12 +438,16 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
                   opacity: layerOpacity,
                 }}
               >
-                <img
-                  src={backSrc}
-                  alt="Card back"
-                  className="w-full h-full object-cover"
-                  draggable={false}
-                />
+                <div className="relative w-full h-full">
+                  <Image
+                    src={backSrc}
+                    alt="Card back"
+                    fill
+                    className="object-cover"
+                    draggable={false}
+                    unoptimized
+                  />
+                </div>
               </div>
             );
           })}
@@ -470,12 +475,16 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
                     }
               }
             >
-              <img
-                src={backSrc}
-                alt="Card back"
-                className="w-full h-full object-cover"
-                draggable={false}
-              />
+              <div className="relative w-full h-full">
+                <Image
+                  src={backSrc}
+                  alt="Card back"
+                  fill
+                  className="object-cover"
+                  draggable={false}
+                  unoptimized
+                />
+              </div>
             </motion.div>
           )}
 

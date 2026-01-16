@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback, memo } from "react";
+import Image from "next/image";
 import { io, Socket } from "socket.io-client";
 import {
   EVENTS,
@@ -35,6 +36,7 @@ import { WordTimeline } from "../components/WordTimeline";
 import { useAudio } from "../hooks/useAudio";
 import { useThrowRate } from "../hooks/useThrowRate";
 import { useTranslations } from "../hooks/useTranslations";
+import { preloadCriticalCardAssets } from "../lib/preloadAssets";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
@@ -80,12 +82,16 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
       >
         {!imageError && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <img
-              src={imagePath}
-              alt={`Special card ${displayName}`}
-              className="object-contain w-full h-full"
-              onError={() => setImageError(true)}
-            />
+            <div className="relative w-full h-full">
+              <Image
+                src={imagePath}
+                alt={`Special card ${displayName}`}
+                fill
+                className="object-contain"
+                onError={() => setImageError(true)}
+                unoptimized
+              />
+            </div>
           </div>
         )}
         {/* Fallback text if image fails to load */}
@@ -123,12 +129,16 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
     >
       {!imageError && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <img
-            src={imagePath}
-            alt={`${card.visual.kind} ${card.visual.style}`}
-            className="object-contain w-full h-full"
-            onError={() => setImageError(true)}
-          />
+          <div className="relative w-full h-full">
+            <Image
+              src={imagePath}
+              alt={`${card.visual.kind} ${card.visual.style}`}
+              fill
+              className="object-contain"
+              onError={() => setImageError(true)}
+              unoptimized
+            />
+          </div>
         </div>
       )}
       {/* Fallback text if image fails to load */}
@@ -166,6 +176,10 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [isAttemptingClaim, setIsAttemptingClaim] = useState(false);
   const [currentClaimId, setCurrentClaimId] = useState<string | null>(null);
+  const [isPreloadingCards, setIsPreloadingCards] = useState(false);
+  
+  // Track if we've already preloaded to avoid duplicate work
+  const didPreloadRef = useRef(false);
   
   // Reduced motion preference (at component level)
   const shouldReduceMotion = useReducedMotion();
@@ -1669,7 +1683,7 @@ export default function Home() {
                   });
                   
                   return (
-                    <div className="mb-6 flex justify-center relative overflow-visible">
+                    <div className="mb-6 flex flex-col items-center gap-2 relative overflow-visible">
                       <DeckStack
                         ref={deckRef}
                         count={myHandCount}
@@ -1683,6 +1697,17 @@ export default function Home() {
                         playerStatus={socketId && roomState.game.playerStatuses ? roomState.game.playerStatuses[socketId] : undefined}
                         hasOtherActivePlayers={hasOtherActivePlayers}
                       />
+                      {/* Loading cards hint */}
+                      {isPreloadingCards && (
+                        <motion.p
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="text-xs text-gray-600 dark:text-gray-400"
+                        >
+                          Loading cards…
+                        </motion.p>
+                      )}
                       
                       {/* Disabled toast */}
                       <AnimatePresence>
