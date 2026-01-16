@@ -67,19 +67,19 @@ export async function preloadCriticalCardAssets(): Promise<void> {
   const preloadPromises: Promise<void>[] = [];
 
   // Preload card back
-  preloadPromises.push(preloadImage('/assets/card-back.png'));
+  preloadPromises.push(preloadImage('/assets/card-back.webp'));
 
   // Preload one representative image per KIND
   // Using style1 as default/fallback for each kind
   const kinds = ['taco', 'gato', 'capibara', 'churro', 'donut'];
   kinds.forEach((kind) => {
-    preloadPromises.push(preloadImage(`/assets/${kind}/style1.png`));
+    preloadPromises.push(preloadImage(`/assets/${kind}/style1.webp`));
   });
 
   // Preload special card images
   const specialTypes = ['special_1', 'special_2', 'special_3'];
   specialTypes.forEach((specialType) => {
-    preloadPromises.push(preloadImage(`/assets/specials/${specialType}.png`));
+    preloadPromises.push(preloadImage(`/assets/specials/${specialType}.webp`));
   });
 
   // Wait for all preloads (best effort - continue even if some fail)

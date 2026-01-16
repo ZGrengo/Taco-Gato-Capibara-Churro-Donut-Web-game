@@ -54,7 +54,7 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
   const [imageError, setImageError] = useState(false);
 
   if (card.type === "SPECIAL" && card.visual.kind === "special") {
-    // Map SPECIAL_1 -> special_1.png, SPECIAL_2 -> special_2.png, etc.
+    // Map SPECIAL_1 -> special_1.webp, SPECIAL_2 -> special_2.webp, etc.
     const specialTypeToFileName: Record<"SPECIAL_1" | "SPECIAL_2" | "SPECIAL_3", string> = {
       SPECIAL_1: "special_1",
       SPECIAL_2: "special_2",
@@ -68,7 +68,7 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
     };
     const fileName = specialTypeToFileName[card.visual.specialType];
     const displayName = specialTypeToDisplayName[card.visual.specialType];
-    const imagePath = `/assets/specials/${fileName}.png`;
+    const imagePath = `/assets/specials/${fileName}.webp`;
 
     return (
       <motion.div
@@ -115,7 +115,7 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
 
   // NORMAL card - visual.kind must be one of the normal kinds
   if (card.visual.kind !== "special") {
-    const imagePath = `/assets/${card.visual.kind}/${card.visual.style}.png`;
+    const imagePath = `/assets/${card.visual.kind}/${card.visual.style}.webp`;
 
     return (
       <motion.div
@@ -884,7 +884,7 @@ export default function Home() {
         if (fromRect && toRect) {
           // Determine card kind and source
           const isMyFlip = flipPlayerId === socketId;
-          const backSrc = "/assets/card-back.png"; // Default back image path - adjust if needed
+          const backSrc = "/assets/card-back.webp"; // Default back image path - adjust if needed
           
           // For now, always use BACK (you can enhance this to show front if needed)
           const flyingCardId = `flying-${Date.now()}-${Math.random()}`;
@@ -1687,7 +1687,7 @@ export default function Home() {
                       <DeckStack
                         ref={deckRef}
                         count={myHandCount}
-                        backSrc="/assets/card-back.png"
+                        backSrc="/assets/card-back.webp"
                         isMyTurn={isMyTurn}
                         enabled={canFlip}
                         disabledReason={disabledReason}
@@ -1736,7 +1736,7 @@ export default function Home() {
                     ref={pileRef}
                     pileCount={roomState.game.pileCount}
                     topCard={roomState.game.topCard}
-                    backSrc="/assets/card-back.png"
+                    backSrc="/assets/card-back.webp"
                     impactKey={impactKey}
                     shakeKey={shakeKey}
                     oopsKey={oopsKey}
