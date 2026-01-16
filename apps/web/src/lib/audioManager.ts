@@ -182,11 +182,9 @@ class AudioManagerClass {
         }
       }, { once: true });
       
-      // Handle WAV load error - fallback to MP3
       wavAudio.addEventListener('error', () => {
         if (!audioLoaded) {
           console.debug(`[AudioManager] WAV not found for ${audioFileName}, trying MP3 fallback...`);
-          // Try MP3 as fallback (use audioFileName for consistency)
           const mp3Url = `/audio/sfx/${audioFileName}.mp3`;
           const mp3Audio = new Audio(mp3Url);
           mp3Audio.preload = 'auto';
@@ -274,11 +272,9 @@ class AudioManagerClass {
         }
       }, { once: true });
       
-      // Handle primary format load error - fallback to alternative format
       primaryAudio.addEventListener('error', () => {
         if (!audioLoaded) {
           console.debug(`[AudioManager] ${primaryFormat.toUpperCase()} not found for music ${name}, trying ${fallbackFormat.toUpperCase()} fallback...`);
-          // Try fallback format
           const fallbackAudio = new Audio(`${basePath}/${name}.${fallbackFormat}`);
           fallbackAudio.preload = 'auto';
           fallbackAudio.loop = true;

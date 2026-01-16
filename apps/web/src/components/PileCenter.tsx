@@ -124,9 +124,10 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
         >
           {/* Stack of card backs behind topCard */}
           <div className="relative overflow-hidden" style={{ width: "224px", height: "288px", margin: "0 auto" }}>
-            {/* Anticipation glow ring - positioned over the stack */}
-            <AnimatePresence>
-              {anticipationKey > 0 && (
+            {/* Anticipation glow ring - positioned over the stack - Disabled on mobile for performance */}
+            {!isMobile && (
+              <AnimatePresence>
+                {anticipationKey > 0 && (
                 <motion.div
                   key={`anticipation-glow-${anticipationKey}`}
                   className="absolute rounded-xl pointer-events-none"
@@ -162,13 +163,15 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
                     },
                   }}
                 />
-              )}
-            </AnimatePresence>
-            {Array.from({ length: visibleLayers }).map((_, index) => {
-              const layerIndex = visibleLayers - 1 - index; // Reverse order (bottom to top)
-              const translateX = layerIndex * 2;
-              const translateY = layerIndex * 2;
-              const rotation = ROTATIONS[layerIndex % ROTATIONS.length];
+                )}
+              </AnimatePresence>
+            )}
+            {/* On mobile: render only 1 layer (no stacking). On desktop: render multiple layers */}
+            {Array.from({ length: isMobile ? 1 : visibleLayers }).map((_, index) => {
+              const layerIndex = isMobile ? 0 : visibleLayers - 1 - index; // Reverse order (bottom to top)
+              const translateX = isMobile ? 0 : layerIndex * 2; // No offset on mobile
+              const translateY = isMobile ? 0 : layerIndex * 2; // No offset on mobile
+              const rotation = isMobile ? 0 : ROTATIONS[layerIndex % ROTATIONS.length]; // No rotation on mobile
               const zIndex = index + 1; // Lower z-index for layers behind
 
               return (
@@ -178,9 +181,10 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
                   style={{
                     width: "100%",
                     height: "100%",
-                    transform: `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`,
+                    // On mobile: no transform (static). On desktop: translate and rotate
+                    transform: isMobile ? 'none' : `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`,
                     zIndex,
-                    opacity: 0.85 - layerIndex * 0.03, // Slight fade for depth
+                    opacity: isMobile ? 0.85 : 0.85 - layerIndex * 0.03, // Slight fade for depth on desktop
                   }}
                 >
                   <div className="relative w-full h-full">
@@ -206,7 +210,7 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
 
         {/* Ripple effect - positioned absolutely relative to container */}
         <AnimatePresence>
-          {!shouldReduceMotion && impactKey > 0 && (
+          {!shouldReduceMotion && !isMobile && impactKey > 0 && (
             <motion.div
               key={impactKey}
               className="absolute rounded-full pointer-events-none"
@@ -239,13 +243,13 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
           )}
         </AnimatePresence>
 
-        {/* Pile count badge */}
+        {/* Pile count badge - Simplified animation on mobile */}
         {pileCount > 0 && (
           <motion.div
             className="absolute -top-2 -right-2 bg-indigo-600 text-white rounded-full w-10 h-10 flex items-center justify-center font-bold text-sm shadow-lg z-50 border-2 border-white dark:border-gray-800"
-            initial={{ scale: 0 }}
+            initial={isMobile ? false : { scale: 0 }}
             animate={{ scale: 1 }}
-            transition={{ type: "spring", stiffness: 200 }}
+            transition={isMobile ? undefined : { type: "spring", stiffness: 200 }}
           >
             {pileCount}
           </motion.div>

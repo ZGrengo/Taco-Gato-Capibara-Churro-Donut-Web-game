@@ -150,7 +150,6 @@ export function CircleGesture({
     return () => clearInterval(interval);
   }, []);
 
-  // Prevent page scroll on iOS Safari while drawing (fallback for browsers that ignore touchAction)
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;

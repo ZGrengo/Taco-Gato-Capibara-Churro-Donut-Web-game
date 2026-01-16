@@ -83,7 +83,6 @@ export function ClickablePileArea({
     [addTapRing]
   );
   
-  // Handle click as fallback (ensures tap ring shows even if pointerDown was intercepted)
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       // Use the container ref for consistent coordinate calculation

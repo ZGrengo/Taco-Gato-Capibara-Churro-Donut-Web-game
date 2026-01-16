@@ -7,9 +7,7 @@ import {
   EVENTS,
   type RoomState,
   type ErrorPayload,
-  type GameState,
   type Card,
-  type GestureType,
   CLAIM_WINDOW_MS,
   CLICK_FRENZY_REQUIRED_CLICKS,
   CLICK_FRENZY_MIN_INTERVAL_MS,
@@ -40,7 +38,6 @@ import { preloadCriticalCardAssets } from "../lib/preloadAssets";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
-// Card Display Component - memoized to prevent unnecessary re-renders
 const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
   const bgColorMap: Record<string, string> = {
     yellow: "#FFCC99",
@@ -159,7 +156,6 @@ const CardDisplay = memo(function CardDisplay({ card }: { card: Card }) {
     );
   }
 
-  // Fallback (shouldn't happen)
   return null;
 });
 
@@ -249,7 +245,6 @@ export default function Home() {
       });
 
       newSocket.on("connect", () => {
-        console.log("Connected to server");
         setConnected(true);
         setWarmingUp(false);
         setSocketId(newSocket.id || null);
@@ -257,15 +252,12 @@ export default function Home() {
       });
 
       newSocket.on("disconnect", () => {
-        console.log("Disconnected from server");
         setConnected(false);
         setWarmingUp(false);
         setSocketId(null);
       });
 
       newSocket.on("connect_error", (error) => {
-        console.log("Connection error:", error);
-        // Keep warmingUp true if we're still trying to connect
         if (!newSocket.connected) {
           setWarmingUp(true);
         }
@@ -607,26 +599,19 @@ export default function Home() {
   // Handle flying card completion
   const handleFlyingCardComplete = useCallback((id: string) => {
     setFlyingCards((prev) => prev.filter((card) => card.id !== id));
-    // Impact is triggered by onImpact callback in FlyingCardLayer before this is called
-    // Clear reference if this was our tracked card and it completed without impact (shouldn't happen)
     if (id === lastLocalFlipCardIdRef.current) {
       lastLocalFlipCardIdRef.current = null;
     }
   }, []);
   
-  // Fallback: detect pileCount increase and trigger impact if no flying card triggered it
   useEffect(() => {
     if (!roomState?.game) return;
     
     const currentPileCount = roomState.game.pileCount;
     const prevPileCount = prevGameStateRef.current.pileCount;
     
-    // If pileCount increased but we didn't detect a flying card (edge case)
-    // Trigger impact as fallback
     if (currentPileCount > prevPileCount && currentPileCount > 0) {
-      // Small delay to allow flying card to trigger first if it exists
       const timer = setTimeout(() => {
-        // Only trigger if no flying cards are active (fallback case)
         if (flyingCards.length === 0) {
           triggerImpact();
         }
@@ -2210,7 +2195,6 @@ export default function Home() {
                     );
                   }
                   
-                  // Fallback if neither winner nor loser (shouldn't happen, but just in case)
                   return (
                     <>
                       <p className="text-xl font-semibold text-gray-900 dark:text-white mb-2">

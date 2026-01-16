@@ -69,8 +69,6 @@ export async function preloadCriticalCardAssets(): Promise<void> {
   // Preload card back
   preloadPromises.push(preloadImage('/assets/card-back.webp'));
 
-  // Preload one representative image per KIND
-  // Using style1 as default/fallback for each kind
   const kinds = ['taco', 'gato', 'capibara', 'churro', 'donut'];
   kinds.forEach((kind) => {
     preloadPromises.push(preloadImage(`/assets/${kind}/style1.webp`));

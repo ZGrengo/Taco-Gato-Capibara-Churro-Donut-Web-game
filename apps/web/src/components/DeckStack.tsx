@@ -5,6 +5,7 @@ import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useAudio } from "../hooks/useAudio";
 import { useTranslations } from "../hooks/useTranslations";
+import { isMobileDevice } from "../lib/deviceDetection";
 
 interface Tap {
   id: string;
@@ -185,9 +186,15 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
     const lastTapRef = useRef<{ id: string; x: number; y: number; time: number } | null>(null);
     const prevCountRef = useRef<number>(count); // Track previous count to detect win
     
-    // Render 4-6 card backs in a stack (not all cards)
-    const stackLayers = Math.min(6, Math.max(4, Math.min(count, 6)));
-    const baseLayers = Math.max(0, stackLayers - 1); // Layers below the top card
+    // Check if device is mobile for performance optimization
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+      setIsMobile(isMobileDevice());
+    }, []);
+    
+    // On mobile: render only 1 card (no stacking). On desktop: render 4-6 cards in a stack
+    const stackLayers = isMobile ? 1 : Math.min(6, Math.max(4, Math.min(count, 6)));
+    const baseLayers = isMobile ? 0 : Math.max(0, stackLayers - 1); // Layers below the top card
 
     // Detect if pointer is fine (desktop/mouse)
     useEffect(() => {
@@ -290,8 +297,8 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
       setIsHovering(false);
     }, []);
 
-    // Determine if peek hover is allowed
-    const canHoverPeek = enabled && count > 0 && isPointerFine && !shouldReduceMotion;
+    // Determine if peek hover is allowed (disabled on mobile for performance)
+    const canHoverPeek = enabled && count > 0 && isPointerFine && !shouldReduceMotion && !isMobile;
 
     // Variants for top card hover peek
     const topCardVariants = {
@@ -418,8 +425,8 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
             filter: `saturate(${saturation})`,
           }}
         >
-          {/* Base stack layers (bottom cards, no hover animation) */}
-          {baseLayers > 0 && Array.from({ length: baseLayers }).map((_, index) => {
+          {/* Base stack layers (bottom cards, no hover animation) - Disabled on mobile for performance */}
+          {!isMobile && baseLayers > 0 && Array.from({ length: baseLayers }).map((_, index) => {
             const translateX = index * 2;
             const translateY = index * 2;
             const zIndex = baseLayers - index;
@@ -452,7 +459,7 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
             );
           })}
 
-          {/* Top card (separate, with hover peek animation) */}
+          {/* Top card (separate, with hover peek animation) - Simplified on mobile */}
           {stackLayers > 0 && (
             <motion.div
               ref={internalTopCardRef}
@@ -460,14 +467,17 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
               style={{
                 width: "100%",
                 height: "100%",
-                transform: `translate(${baseLayers * 2}px, ${baseLayers * 2}px)`,
+                // On mobile: no transform offset (static). On desktop: offset by baseLayers
+                transform: isMobile ? 'none' : `translate(${baseLayers * 2}px, ${baseLayers * 2}px)`,
                 opacity: baseOpacity,
               }}
-              variants={topCardVariants}
+              variants={isMobile ? undefined : topCardVariants}
               initial="rest"
-              animate={getTopCardAnimation()}
+              animate={isMobile ? "rest" : getTopCardAnimation()}
               transition={
-                typeof getTopCardAnimation() === "string"
+                isMobile 
+                  ? undefined // No animation on mobile
+                  : typeof getTopCardAnimation() === "string"
                   ? undefined // Use variant transitions
                   : {
                       duration: isPressed ? 0.05 : 0.2,
@@ -488,32 +498,33 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
             </motion.div>
           )}
 
-          {/* Badge with count */}
+          {/* Badge with count - Simplified animation on mobile */}
           <motion.div
             className="absolute -top-2 -right-2 bg-indigo-600 text-white rounded-full w-12 h-12 flex items-center justify-center font-bold text-lg shadow-lg z-50 border-2 border-white dark:border-gray-800"
-            initial={{ scale: 0 }}
+            initial={isMobile ? false : { scale: 0 }}
             animate={{ scale: 1 }}
-            transition={{ type: "spring", stiffness: 200 }}
+            transition={isMobile ? undefined : { type: "spring", stiffness: 200 }}
             style={{ opacity: baseOpacity }}
           >
             {count}
           </motion.div>
 
-          {/* Tap rings */}
-          <div 
-            className="absolute inset-0 pointer-events-none overflow-visible"
-            style={{ 
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 99999,
-              overflow: "visible",
-            }}
-          >
-            <AnimatePresence>
-              {taps.map((tap) => (
+          {/* Tap rings - Disabled on mobile for performance */}
+          {!isMobile && (
+            <div 
+              className="absolute inset-0 pointer-events-none overflow-visible"
+              style={{ 
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 99999,
+                overflow: "visible",
+              }}
+            >
+              <AnimatePresence>
+                {taps.map((tap) => (
                 <motion.div
                   key={tap.id}
                   className="absolute rounded-full pointer-events-none"
@@ -547,8 +558,9 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
                   }}
                 />
               ))}
-            </AnimatePresence>
-          </div>
+              </AnimatePresence>
+            </div>
+          )}
 
           {/* Help text bubble - Desktop: right side, auto-dismiss */}
           {helpText && (

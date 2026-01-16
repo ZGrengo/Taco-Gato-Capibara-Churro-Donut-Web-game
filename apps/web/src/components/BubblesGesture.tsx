@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAudio } from "../hooks/useAudio";
 import { useTranslations } from "../hooks/useTranslations";
+import { isMobileDevice } from "../lib/deviceDetection";
 
 interface Bubble {
   id: string;
@@ -120,6 +121,11 @@ export function BubblesGesture({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const { playSfx } = useAudio();
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
   
   // Track popped count for progressive pitch (reset when claimId changes)
   const poppedCountRef = useRef<number>(0);
@@ -407,7 +413,24 @@ export function BubblesGesture({
                 whileTap={{ scale: 0.95 }}
               >
                 <div className="w-full h-full rounded-full bg-blue-400 dark:bg-blue-500 border-4 border-blue-600 dark:border-blue-400 shadow-lg flex items-center justify-center">
-                  <span className="text-2xl">🫧</span>
+                  {isMobile ? (
+                    <span className="text-2xl">🫧</span>
+                  ) : (
+                    <span 
+                      className="text-3xl leading-none select-none"
+                      style={{ 
+                        fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", "EmojiOne Mozilla", "Twemoji Mozilla", "Segoe UI Symbol", sans-serif',
+                        display: 'inline-block',
+                        lineHeight: '1',
+                        WebkitFontSmoothing: 'antialiased',
+                        MozOsxFontSmoothing: 'grayscale',
+                      }}
+                      role="img"
+                      aria-label="bubble"
+                    >
+                      🫧
+                    </span>
+                  )}
                 </div>
               </motion.div>
             );
