@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
+import { isMobileDevice } from "../lib/deviceDetection";
 
 interface FlyingCard {
   id: string;
@@ -29,8 +30,15 @@ export function FlyingCardLayer({
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // Limit to max 3 flying cards
-  const limitedCards = flyingCards.slice(0, 3);
+  // Check if device is mobile for performance optimization
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
+
+  // Limit to max 3 flying cards (reduce to 2 on mobile for better performance)
+  const maxCards = isMobile ? 2 : 3;
+  const limitedCards = flyingCards.slice(0, maxCards);
 
   return (
     <div
@@ -50,8 +58,15 @@ export function FlyingCardLayer({
             Math.pow(card.to.x - card.from.x, 2) +
               Math.pow(card.to.y - card.from.y, 2)
           );
-          const duration = Math.min(0.8, Math.max(0.4, distance / 800)); // Adjust based on distance
+          // Shorter duration on mobile for snappier feel
+          const baseDuration = isMobile ? 0.3 : 0.4;
+          const maxDuration = isMobile ? 0.6 : 0.8;
+          const duration = Math.min(maxDuration, Math.max(baseDuration, distance / (isMobile ? 1000 : 800)));
           const randomRotate = (Math.random() - 0.5) * 15; // Random rotation between -7.5 and 7.5 degrees
+
+          // On mobile: simplify animations (no scale, no rotate, simpler opacity)
+          // On desktop: full animation with scale and rotate
+          const useSimpleAnimation = prefersReducedMotion || isMobile;
 
           return (
             <motion.div
@@ -62,9 +77,11 @@ export function FlyingCardLayer({
                 height: "288px", // h-72
                 x: card.from.x - 112, // Center the card
                 y: card.from.y - 144,
+                willChange: useSimpleAnimation ? 'transform, opacity' : 'transform',
+                transform: 'translateZ(0)', // Force GPU acceleration
               }}
               initial={
-                prefersReducedMotion
+                useSimpleAnimation
                   ? { opacity: 0 }
                   : {
                       x: card.from.x - 112,
@@ -75,8 +92,12 @@ export function FlyingCardLayer({
                     }
               }
               animate={
-                prefersReducedMotion
-                  ? { opacity: 0 }
+                useSimpleAnimation
+                  ? {
+                      x: card.to.x - 112,
+                      y: card.to.y - 144,
+                      opacity: 1,
+                    }
                   : {
                       x: card.to.x - 112,
                       y: card.to.y - 144,
@@ -88,7 +109,8 @@ export function FlyingCardLayer({
               exit={{ opacity: 0 }}
               transition={{
                 duration: prefersReducedMotion ? 0.2 : duration,
-                ease: "easeInOut",
+                // Use simpler easing on mobile (linear or easeOut) for better performance
+                ease: useSimpleAnimation ? "easeOut" : "easeInOut",
               }}
               onAnimationComplete={() => {
                 // Trigger impact callback first (when card lands)

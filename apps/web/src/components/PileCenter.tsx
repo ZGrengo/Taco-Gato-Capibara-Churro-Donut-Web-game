@@ -1,10 +1,11 @@
 "use client";
 
-import { forwardRef, ReactNode, useMemo } from "react";
+import { forwardRef, ReactNode, useMemo, useState, useEffect } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import type { Card } from "@acme/shared";
 import { useTranslations } from "../hooks/useTranslations";
+import { isMobileDevice } from "../lib/deviceDetection";
 
 const MAX_PILE_LAYERS = 10;
 
@@ -29,15 +30,23 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
     const shouldReduceMotion = useReducedMotion();
     const t = useTranslations();
     
+    // Check if device is mobile for performance optimization
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+      setIsMobile(isMobileDevice());
+    }, []);
+    
     // Calculate visible layers (pileCount - 1 because topCard is separate)
     const visibleLayers = Math.min(Math.max(0, pileCount - 1), MAX_PILE_LAYERS);
 
     // Combine impact bounce, shake, and anticipation animations
     // Use useMemo to ensure animations object changes when keys change
+    // On mobile: simplify animations (fewer keyframes, less complex)
     const animateProps = useMemo(() => {
       const animations: any = {};
+      const useSimpleAnimation = shouldReduceMotion || isMobile;
       
-      if (!shouldReduceMotion) {
+      if (!useSimpleAnimation) {
         if (impactKey > 0) {
           animations.scale = [1, 1.05, 0.99, 1];
           animations.y = [0, -6, 0];
@@ -53,18 +62,40 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
         if (anticipationKey > 0) {
           animations.scale = [1, 1, 1.05, 1]; // Micro-freeze (hold at 1 for ~120ms) then stronger thump
         }
+      } else if (!shouldReduceMotion) {
+        // Simplified animations for mobile (fewer keyframes)
+        if (impactKey > 0) {
+          animations.scale = [1, 1.03, 1]; // Simpler: 3 keyframes instead of 4
+          animations.y = [0, -4, 0]; // Reduced movement
+        }
+        
+        if (shakeKey > 0) {
+          animations.x = [0, -6, 6, 0]; // Simpler: 4 keyframes instead of 8
+          // No rotate on mobile for better performance
+        }
+        
+        if (anticipationKey > 0) {
+          animations.scale = [1, 1.03, 1]; // Simpler: 3 keyframes instead of 4
+        }
       }
       // Note: Glow effect for anticipation is handled by a separate overlay element, not via boxShadow in animations
       
       // Always return an object, even if empty, to ensure Framer Motion detects changes
       return Object.keys(animations).length > 0 ? animations : { scale: 1, y: 0 };
-    }, [impactKey, shakeKey, anticipationKey, shouldReduceMotion]);
+    }, [impactKey, shakeKey, anticipationKey, shouldReduceMotion, isMobile]);
 
     const getTransitionProps = () => {
+      const useSimpleAnimation = shouldReduceMotion || isMobile;
+      
       if (shakeKey > 0) {
-        return { duration: 0.35, ease: "easeOut" };
+        // Shorter duration on mobile for snappier feel
+        return { duration: useSimpleAnimation ? 0.25 : 0.35, ease: "easeOut" };
       }
       if (anticipationKey > 0) {
+        if (useSimpleAnimation) {
+          // Simpler transition on mobile
+          return { duration: 0.2, ease: "easeOut" };
+        }
         // Anticipation: 150ms freeze (hold at scale 1) + 100ms thump = 250ms total (more impactful)
         // Glow is handled separately by overlay element, not via boxShadow
         return {
@@ -75,7 +106,7 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
           },
         };
       }
-      return { duration: 0.25, ease: "easeOut" };
+      return { duration: useSimpleAnimation ? 0.2 : 0.25, ease: "easeOut" };
     };
 
     return (
@@ -87,6 +118,8 @@ export const PileCenter = forwardRef<HTMLDivElement, PileCenterProps>(
           className="relative"
           style={{ 
             pointerEvents: 'none',
+            willChange: isMobile && (impactKey > 0 || shakeKey > 0 || anticipationKey > 0) ? 'transform' : 'auto',
+            transform: 'translateZ(0)', // Force GPU acceleration on mobile
           }}
         >
           {/* Stack of card backs behind topCard */}
