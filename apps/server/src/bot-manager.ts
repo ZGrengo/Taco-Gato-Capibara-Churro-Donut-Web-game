@@ -134,11 +134,11 @@ export class BotManager {
     }
 
     // Calculate claim probability
-    let claimProbability = 0.7; // Base 70%
+    let claimProbability = 0.5; // Base 50% (reduced from 70%)
     
     // Increase probability if pile is large (>6 cards)
     if (internalGame.pile.length > 6) {
-      claimProbability = 0.85; // 85% for large piles
+      claimProbability = 0.65; // 65% for large piles (reduced from 85%)
     }
 
     // Decide if bot should claim
@@ -154,8 +154,8 @@ export class BotManager {
         // For gestures: 2000-4000ms (2-4 seconds) to simulate gesture completion
         delay = 2000 + Math.random() * 2000;
       } else {
-        // Regular claim: 300-900ms
-        delay = 300 + Math.random() * 600;
+        // Regular claim: 500-1200ms (increased from 300-900ms for slower reaction)
+        delay = 500 + Math.random() * 700;
       }
       
       const timeout = setTimeout(() => {

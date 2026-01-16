@@ -39,8 +39,8 @@ interface AudioPreferences {
 }
 
 const DEFAULT_PREFERENCES: AudioPreferences = {
-  sfxVolume: 0.7,
-  musicVolume: 0.3,
+  sfxVolume: 0.56, // 0.7 * 0.8 (20% reduction)
+  musicVolume: 0.24, // 0.3 * 0.8 (20% reduction)
   muted: true, // Legacy: Music muted by default
   sfxMuted: false, // SFX enabled by default
   musicMuted: true, // Music muted by default

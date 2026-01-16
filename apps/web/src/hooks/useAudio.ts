@@ -20,7 +20,7 @@ export function useAudio() {
   // Initialize with default preferences for SSR compatibility
   const [preferences, setPreferences] = useState(() => {
     if (typeof window === 'undefined') {
-      return { sfxVolume: 0.7, musicVolume: 0.3, muted: true, sfxMuted: false, musicMuted: true };
+      return { sfxVolume: 0.56, musicVolume: 0.24, muted: true, sfxMuted: false, musicMuted: true };
     }
     return AudioManager.getPreferences();
   });
