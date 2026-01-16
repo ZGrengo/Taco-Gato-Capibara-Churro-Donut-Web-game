@@ -594,8 +594,12 @@ export default function Home() {
     // PRIORITY 1: Check for penalty (Oops!)
     // Only show Oops if handCount INCREASED (player received cards)
     if (handCountIncreased && pileCountDecreased) {
+      // Calculate actual cards received by player (handCount increase)
+      // This is accurate even when cards are distributed round-robin among multiple non-claimers
+      const actualCardsReceived = myHandCount - prevMyHandCountRef.current;
+      
       // Penalty detected! Check if it's from a slap intent or a failed gesture attempt
-      let cardCount = prevPileCountRef.current;
+      let cardCount = actualCardsReceived;
 
       // Case 1: Direct slap intent (click on pile without gesture, or false slap)
       if (slapIntentAt !== null) {
@@ -603,7 +607,8 @@ export default function Home() {
         // Check within the 1500ms window for direct slaps
         if (timeSinceSlap < CLAIM_WINDOW_MS) {
           shouldShowOops = true;
-          cardCount = slapPileSnapshotRef.current ?? prevPileCountRef.current;
+          // For false slaps, use actual cards received (more accurate than snapshot)
+          cardCount = actualCardsReceived;
         }
       }
 
@@ -621,8 +626,8 @@ export default function Home() {
         // If claim expired, changed, or we failed and aren't in claimers, show "Oops!"
         if (isClaimGone || isNotInClaimers) {
           shouldShowOops = true;
-          // Use snapshot from when gesture started (captured at click), or fallback to previous pile count
-          cardCount = slapPileSnapshotRef.current ?? prevPileCountRef.current;
+          // Use actual cards received (more accurate than snapshot)
+          cardCount = actualCardsReceived;
         }
       }
 
@@ -635,7 +640,8 @@ export default function Home() {
         // If claim expired and player received cards without attempting, show "Oops!"
         if (claimExpired && noClaimIntent) {
           shouldShowOops = true;
-          cardCount = prevPileCountRef.current;
+          // Use actual cards received (accurate for round-robin distribution)
+          cardCount = actualCardsReceived;
         }
       }
     }
@@ -676,9 +682,10 @@ export default function Home() {
 
     // Now trigger notifications and consume intents
     if (shouldShowOops) {
-      // Trigger animations and set card count for display
-      const cardCount = slapPileSnapshotRef.current ?? prevPileCountRef.current;
-      setOopsCardCount(cardCount);
+      // Calculate actual cards received (handCount increase)
+      // This is the most accurate way to show how many cards the player actually received
+      const actualCardsReceived = myHandCount - prevMyHandCountRef.current;
+      setOopsCardCount(actualCardsReceived);
       setOopsKey((prev) => prev + 1);
       setShakeKey((prev) => prev + 1);
       setScreenShakeKey((prev) => prev + 1);
@@ -1579,6 +1586,14 @@ export default function Home() {
                     // Don't show if claim active or no cards (handled by disabled state)
                   }
                   
+                  // Check if there are other active players (players with cards who are not OUT)
+                  const hasOtherActivePlayers = roomState.players.some((player) => {
+                    if (player.id === socketId) return false; // Exclude self
+                    const playerHandCount = roomState.game.handCounts[player.id] ?? 0;
+                    const playerStatus = roomState.game.playerStatuses?.[player.id] || "ACTIVE";
+                    return playerHandCount > 0 && playerStatus !== "OUT";
+                  });
+                  
                   return (
                     <div className="mb-6 flex justify-center relative overflow-visible">
                       <DeckStack
@@ -1592,6 +1607,7 @@ export default function Home() {
                         onDisabledClick={handleDisabledDeckClick}
                         helpText={helpText}
                         playerStatus={socketId && roomState.game.playerStatuses ? roomState.game.playerStatuses[socketId] : undefined}
+                        hasOtherActivePlayers={hasOtherActivePlayers}
                       />
                       
                       {/* Disabled toast */}

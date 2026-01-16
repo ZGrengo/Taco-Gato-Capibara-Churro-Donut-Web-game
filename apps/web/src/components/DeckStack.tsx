@@ -22,6 +22,7 @@ interface DeckStackProps {
   helpText?: string | null; // Text to show in bubble above deck (null = hide)
   topCardRef?: React.RefObject<HTMLDivElement>; // Optional ref for top card (for future drag)
   playerStatus?: string; // Player status (e.g., "PENDING_EXIT", "OUT", "ACTIVE")
+  hasOtherActivePlayers?: boolean; // Whether there are other active players still in the game
 }
 
 // Deterministic rotations table to avoid flicker
@@ -170,7 +171,7 @@ function DesktopHelpBubble({
 }
 
 export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
-  ({ count, backSrc, isMyTurn = false, enabled = false, disabledReason, onFlip, onDisabledClick, helpText, topCardRef, playerStatus }, ref) => {
+  ({ count, backSrc, isMyTurn = false, enabled = false, disabledReason, onFlip, onDisabledClick, helpText, topCardRef, playerStatus, hasOtherActivePlayers = false }, ref) => {
     const shouldReduceMotion = useReducedMotion();
     const { playSfx } = useAudio();
     const t = useTranslations();
@@ -358,6 +359,7 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
     if (count === 0) {
       // If player is waiting for final claim, show "One last claim!" instead of "You won!"
       const isWaitingForFinalClaim = playerStatus === "PENDING_EXIT";
+      const showCapybaraMessage = !isWaitingForFinalClaim && hasOtherActivePlayers;
       
       return (
         <div
@@ -373,6 +375,11 @@ export const DeckStack = forwardRef<HTMLDivElement, DeckStackProps>(
             <p className="text-sm font-semibold mt-1">
               {isWaitingForFinalClaim ? t.deck.oneLastClaim : t.deck.youWon}
             </p>
+            {showCapybaraMessage && (
+              <p className="text-xs font-medium mt-2 opacity-90">
+                {t.deck.youWonWithOthers}
+              </p>
+            )}
           </motion.div>
         </div>
       );

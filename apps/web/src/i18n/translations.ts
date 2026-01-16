@@ -114,6 +114,7 @@ export interface Translations {
     touchYourDeckToPlay: string;
     waiting: string;
     youWon: string;
+    youWonWithOthers: string;
     youLost: string;
     oneLastClaim: string;
     flipCard: string;
@@ -258,6 +259,7 @@ const translations: Record<Language, Translations> = {
       touchYourDeckToPlay: 'Toca tu mazo para jugar',
       waiting: 'Esperando...',
       youWon: '¡Ganaste!',
+      youWonWithOthers: 'El capibara se encargara de lo demas 😎',
       youLost: '¡Perdiste!',
       oneLastClaim: '¡Un último claim!',
       flipCard: 'Voltear carta',
@@ -396,6 +398,7 @@ const translations: Record<Language, Translations> = {
       touchYourDeckToPlay: 'Touch your deck to play',
       waiting: 'Waiting...',
       youWon: 'You Won!',
+      youWonWithOthers: 'The capybara will take care of the rest 😎',
       youLost: 'You Lost!',
       oneLastClaim: 'One last claim!',
       flipCard: 'Flip card',
